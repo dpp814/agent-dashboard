@@ -2,7 +2,7 @@
   "name": "agent-monitor-dashboard",
   "version": "0.1.0",
   "description": "Local dashboard for monitoring Claude Code and Codex CLI sessions",
-  "private": true,
+  "private": false,
   "license": "MIT",
   "type": "module",
   "engines": {
