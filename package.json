@@ -1,0 +1,40 @@
+{
+  "name": "agent-monitor-dashboard",
+  "version": "0.1.0",
+  "description": "Local dashboard for monitoring Claude Code and Codex CLI sessions",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:server dev:web",
+    "dev:server": "tsx watch apps/server/src/index.ts",
+    "dev:web": "vite --host 127.0.0.1 --port 5173 apps/web",
+    "build": "npm run build:shared && npm run build:server && npm run build:web",
+    "build:shared": "tsc -p packages/shared/tsconfig.json",
+    "build:server": "tsc -p apps/server/tsconfig.json",
+    "build:web": "vite build apps/web",
+    "start": "node apps/server/dist/index.js",
+    "restart": "sh scripts/restart.sh",
+    "hooks:install": "node scripts/install-hooks.mjs",
+    "hooks:uninstall": "node scripts/install-hooks.mjs --uninstall",
+    "typecheck": "npm run build:shared && tsc -p apps/server/tsconfig.json --noEmit && tsc -p apps/web/tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "vite": "^7.2.7",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "lucide-react": "^0.561.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.2",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "npm-run-all": "^4.1.5",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
