@@ -21,7 +21,7 @@
 
 ```text
 AI修仙传
-修行中 / 候令中 / 已圆满 / 生异象
+顶部状态概览：修行中 / 候令中 / 已圆满 / 生异象
 诸道友 / 授令阁 / 道友图鉴 / 卷宗
 ```
 
@@ -204,7 +204,7 @@ Codex hook events:
 
 ## UI Guide
 
-### 顶部状态
+### 顶部状态概览
 
 - `修行中`: running agents
 - `候令中`: waiting approval/input
@@ -238,7 +238,7 @@ Codex entries auto-expire after `AGENT_MONITOR_CODEX_APPROVAL_TTL_MS`, or resolv
 
 ### 道友图鉴
 
-Browser notifications randomly use one of the bundled avatars. Usage count is stored in browser `localStorage`.
+Browser notifications randomly use one of the bundled avatars. The selected avatar gets one use count, stored in browser `localStorage`.
 
 Cultivation ranks:
 
