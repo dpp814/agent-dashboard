@@ -563,47 +563,103 @@ input {
 
 .iconUsageGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
   gap: 10px;
-  padding: 12px;
+  padding: 12px 14px 14px;
 }
 
 .iconUsageItem {
+  position: relative;
   min-width: 0;
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
+  grid-template-columns: 50px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
-  padding: 9px;
+  overflow: hidden;
+  min-height: 88px;
+  padding: 10px;
   border: 1px solid var(--border-card);
   border-radius: 8px;
-  background: var(--surface-muted);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--rank-core, #4f9ee4) 12%, transparent), transparent 58%),
+    linear-gradient(180deg, var(--surface), var(--surface-muted));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  isolation: isolate;
+}
+
+.iconUsageItem::before {
+  content: "";
+  position: absolute;
+  inset: -46px auto auto -46px;
+  z-index: -1;
+  width: 116px;
+  height: 116px;
+  border-radius: 999px;
+  background: radial-gradient(circle, var(--rank-glow, rgba(79, 158, 228, 0.18)), transparent 66%);
+  opacity: 0.7;
+  animation: cultivationSpin 8s linear infinite;
+}
+
+.iconUsageItem::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(120deg, transparent 0 36%, rgba(255, 255, 255, 0.26) 48%, transparent 62%);
+  opacity: 0;
+  transform: translateX(-45%);
 }
 
 .iconUsageItem img {
-  width: 44px;
-  height: 44px;
+  width: 50px;
+  height: 50px;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: 50%;
+}
+
+.iconUsageAvatar {
+  position: relative;
+  width: 50px;
+  height: 50px;
+}
+
+.iconUsageAvatar::before,
+.iconUsageAvatar::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--rank-core, #4f9ee4) 58%, transparent);
+  box-shadow: 0 0 12px var(--rank-glow, rgba(79, 158, 228, 0.22));
+}
+
+.iconUsageAvatar::after {
+  inset: -6px;
+  border-style: dashed;
+  opacity: 0.42;
+  animation: cultivationSpin 14s linear infinite reverse;
 }
 
 .iconUsageImageButton {
-  width: 44px;
-  height: 44px;
+  width: 50px;
+  height: 50px;
   display: block;
   padding: 0;
   border: 0;
   background: transparent;
   cursor: zoom-in;
+  position: relative;
+  z-index: 1;
 }
 
 .iconUsageImageButton:hover img {
-  outline: 2px solid var(--info-strong);
-  outline-offset: 2px;
+  outline: 2px solid var(--rank-core, var(--info-strong));
+  outline-offset: 4px;
 }
 
 .iconUsageItem strong,
-.iconUsageItem > div > span {
+.iconUsageCount {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -613,20 +669,37 @@ input {
 .iconUsageItem strong {
   color: var(--text-strong);
   font-size: 13px;
+  font-weight: 800;
 }
 
-.iconUsageItem > div > span {
-  margin-top: 3px;
-  color: var(--text-muted);
-  font-size: 18px;
-  font-weight: 700;
+.iconUsageInfo {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
 }
 
-.iconUsageLevels {
+.iconUsageNameRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.iconUsageCount {
+  min-width: 30px;
+  color: var(--rank-core, var(--text-muted));
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: right;
+}
+
+.iconUsageRealm {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 7px;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
 }
 
 .iconUsageLevel {
@@ -634,7 +707,8 @@ input {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 2px 5px;
+  gap: 4px;
+  padding: 3px 7px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 800;
@@ -642,24 +716,94 @@ input {
 }
 
 .iconUsageLevel.cultivation {
-  color: #ffffff;
+  color: var(--rank-text, #ffffff);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--rank-core, #4f9ee4) 72%, #11161a), var(--rank-hot, #4f9ee4));
   text-shadow: 0 1px 1px rgba(17, 22, 26, 0.28);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    0 0 14px var(--rank-glow, rgba(79, 158, 228, 0.22));
 }
 
-.iconUsageLevel.cultivationRank0 { background: linear-gradient(135deg, #4f8f62, #6fb576); }
-.iconUsageLevel.cultivationRank1 { background: linear-gradient(135deg, #25896f, #39b08e); }
-.iconUsageLevel.cultivationRank2 { background: linear-gradient(135deg, #1d8497, #36b5c7); }
-.iconUsageLevel.cultivationRank3 { background: linear-gradient(135deg, #276fa8, #4aa0df); }
-.iconUsageLevel.cultivationRank4 { background: linear-gradient(135deg, #4c62b7, #7586ea); }
-.iconUsageLevel.cultivationRank5 { background: linear-gradient(135deg, #6c56b9, #9777f0); }
-.iconUsageLevel.cultivationRank6 { background: linear-gradient(135deg, #8a4dad, #c06ee0); }
-.iconUsageLevel.cultivationRank7 { background: linear-gradient(135deg, #a84691, #df6ebb); }
-.iconUsageLevel.cultivationRank8 { background: linear-gradient(135deg, #b94d64, #ee7b86); }
-.iconUsageLevel.cultivationRank9 { background: linear-gradient(135deg, #b65f2c, #ee9853); }
-.iconUsageLevel.cultivationRank10 { background: linear-gradient(135deg, #b38721, #f0c94c); }
-.iconUsageLevel.cultivationRank11 { background: linear-gradient(135deg, #c4931a, #ffe37b); color: #3a2600; text-shadow: none; }
-.iconUsageLevel.cultivationRank12 { background: linear-gradient(135deg, #fff3a3, #ffffff 48%, #f0c545); color: #2d2200; text-shadow: none; }
+.iconUsageLevel.cultivationDormant {
+  color: var(--text-muted);
+  background: var(--surface-subtle);
+  text-shadow: none;
+}
+
+.breakthroughMark {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 20px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  color: #3a2600;
+  background: linear-gradient(135deg, #fff3a3, #ffb84d);
+  box-shadow: 0 0 16px rgba(240, 201, 76, 0.35);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.cultivationProgress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--rank-core, var(--border-strong)) 14%, var(--surface-subtle));
+}
+
+.cultivationProgress span {
+  display: block;
+  width: var(--cultivation-progress);
+  height: 100%;
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, var(--rank-core, var(--info-strong)), var(--rank-hot, #f0c94c)),
+    repeating-linear-gradient(90deg, transparent 0 9px, rgba(255, 255, 255, 0.3) 9px 12px);
+  box-shadow: 0 0 12px var(--rank-glow, rgba(79, 158, 228, 0.28));
+}
+
+.iconUsageItem.isBreakthrough {
+  border-color: color-mix(in srgb, var(--rank-hot, #f0c94c) 58%, var(--border-card));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 0 0 1px color-mix(in srgb, var(--rank-hot, #f0c94c) 28%, transparent),
+    0 0 28px var(--rank-glow, rgba(240, 201, 76, 0.24));
+  animation: breakthroughPulse 2.2s ease-in-out infinite;
+}
+
+.iconUsageItem.isBreakthrough::after {
+  animation: breakthroughSweep 2.6s ease-in-out infinite;
+}
+
+.rankAura0 { --rank-core: #4f8f62; --rank-hot: #8ac77e; --rank-glow: rgba(79, 143, 98, 0.24); }
+.rankAura1 { --rank-core: #25896f; --rank-hot: #4cc59a; --rank-glow: rgba(37, 137, 111, 0.26); }
+.rankAura2 { --rank-core: #1d8497; --rank-hot: #4cc6d0; --rank-glow: rgba(29, 132, 151, 0.28); }
+.rankAura3 { --rank-core: #276fa8; --rank-hot: #58a9ea; --rank-glow: rgba(39, 111, 168, 0.3); }
+.rankAura4 { --rank-core: #4c62b7; --rank-hot: #8797f4; --rank-glow: rgba(76, 98, 183, 0.3); }
+.rankAura5 { --rank-core: #6c56b9; --rank-hot: #a589f4; --rank-glow: rgba(108, 86, 185, 0.31); }
+.rankAura6 { --rank-core: #8a4dad; --rank-hot: #ca7be8; --rank-glow: rgba(138, 77, 173, 0.31); }
+.rankAura7 { --rank-core: #a84691; --rank-hot: #e983c4; --rank-glow: rgba(168, 70, 145, 0.31); }
+.rankAura8 { --rank-core: #b94d64; --rank-hot: #f18890; --rank-glow: rgba(185, 77, 100, 0.32); }
+.rankAura9 { --rank-core: #b65f2c; --rank-hot: #f0a05c; --rank-glow: rgba(182, 95, 44, 0.34); }
+.rankAura10 { --rank-core: #b38721; --rank-hot: #f0c94c; --rank-glow: rgba(179, 135, 33, 0.36); --rank-text: #2f2300; }
+.rankAura11 { --rank-core: #c4931a; --rank-hot: #ffe37b; --rank-glow: rgba(196, 147, 26, 0.4); --rank-text: #2f2300; }
+.rankAura12 { --rank-core: #f0c545; --rank-hot: #ffffff; --rank-glow: rgba(240, 197, 69, 0.46); --rank-text: #2d2200; }
+
+@keyframes cultivationSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes breakthroughPulse {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes breakthroughSweep {
+  0% { opacity: 0; transform: translateX(-55%); }
+  30%, 55% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(55%); }
+}
 
 .iconPreviewBackdrop {
   position: fixed;

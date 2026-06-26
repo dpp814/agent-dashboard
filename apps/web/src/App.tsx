@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Check, Clock, Eye, Moon, Play, Search, ShieldAlert, Sun, Terminal, X } from 'lucide-react';
+import { Bell, Check, Clock, Eye, Flame, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, X } from 'lucide-react';
 import type { AgentState, AgentStatus, ApprovalRequest, DashboardSnapshot, TaskHistory, WsMessage } from '@agent-monitor/shared';
 import { connectWs, fetchSnapshot, resolveApproval } from './api';
 
@@ -9,6 +9,15 @@ type NotificationIconUsage = {
   name: string;
   path: string;
   count: number;
+};
+type CultivationLevel = {
+  label: string;
+  className: string;
+  rankIndex: number;
+  progress: number;
+  nextBreakthroughIn: number;
+  breakthrough: boolean;
+  showBreakthroughLabel: boolean;
 };
 
 const emptySnapshot: DashboardSnapshot = {
@@ -452,22 +461,34 @@ function NotificationIconUsageList({ icons, onPreview }: { icons: NotificationIc
 
 function NotificationIconUsageContent({ icon, onPreview }: { icon: NotificationIconUsage; onPreview: (icon: NotificationIconUsage) => void }) {
   const image = <img src={icon.path} alt="" />;
+  const cultivation = notificationIconLevel(icon.count);
   return (
-    <div className="iconUsageItem">
-      {icon.count >= 10 ? (
-        <button className="iconUsageImageButton" type="button" onClick={() => onPreview(icon)} aria-label={`查看${icon.name}原图`}>
-          {image}
-        </button>
-      ) : image}
-      <div>
-        <strong>{icon.name}</strong>
-        <span>{icon.count}</span>
-        <div className="iconUsageLevels" aria-label={notificationIconLevelLabel(icon.count)}>
-          {notificationIconLevels(icon.count).map((level, index) => (
-            <span className={`iconUsageLevel ${level.className}`} key={`${level.label}-${index}`}>
-              {level.label}
-            </span>
-          ))}
+    <div className={`iconUsageItem ${cultivation.breakthrough ? 'isBreakthrough' : ''} rankAura${cultivation.rankIndex}`}>
+      <div className="iconUsageAvatar">
+        {icon.count >= 10 ? (
+          <button className="iconUsageImageButton" type="button" onClick={() => onPreview(icon)} aria-label={`查看${icon.name}原图`}>
+            {image}
+          </button>
+        ) : image}
+      </div>
+      <div className="iconUsageInfo">
+        <div className="iconUsageNameRow">
+          <strong>{icon.name}</strong>
+          <span className="iconUsageCount">{icon.count}</span>
+        </div>
+        <div className="iconUsageRealm" aria-label={cultivation.label}>
+          <span className={`iconUsageLevel ${cultivation.className}`}>
+            <Sparkles size={12} />
+            {cultivation.label}
+          </span>
+          {cultivation.showBreakthroughLabel ? <span className="breakthroughMark"><Flame size={12} />破境</span> : null}
+        </div>
+        <div
+          className="cultivationProgress"
+          style={{ '--cultivation-progress': `${cultivation.progress}%` } as React.CSSProperties}
+          aria-label={`破境进度 ${cultivation.progress}%`}
+        >
+          <span />
         </div>
       </div>
     </div>
@@ -494,12 +515,31 @@ function originalNotificationIconPath(path: string): string {
   return path.replace('/notification-icon/', '/notification-icon/original/');
 }
 
-function notificationIconLevels(count: number): { label: string; className: string }[] {
-  if (count <= 0) return [];
+function notificationIconLevel(count: number): CultivationLevel {
+  if (count <= 0) {
+    return {
+      label: '未入品',
+      className: 'cultivation cultivationDormant',
+      rankIndex: 0,
+      progress: 0,
+      nextBreakthroughIn: 10,
+      breakthrough: false,
+      showBreakthroughLabel: false
+    };
+  }
   const rankIndex = Math.min(Math.floor(count / 10), cultivationRanks.length - 1);
   const level = count % 10;
   const levelLabel = level && rankIndex < cultivationRanks.length - 1 ? `${formatChineseNumber(level)}级` : '';
-  return [{ label: `${cultivationRanks[rankIndex]}${levelLabel}`, className: `cultivation cultivationRank${rankIndex}` }];
+  const finalRank = rankIndex === cultivationRanks.length - 1;
+  return {
+    label: `${cultivationRanks[rankIndex]}${levelLabel}`,
+    className: `cultivation cultivationRank${rankIndex}`,
+    rankIndex,
+    progress: finalRank ? 100 : level ? level * 10 : 100,
+    nextBreakthroughIn: finalRank ? 0 : level ? 10 - level : 0,
+    breakthrough: count >= 10 && level === 0,
+    showBreakthroughLabel: count >= 10 && level === 0 && !finalRank
+  };
 }
 
 function formatChineseNumber(value: number): string {
@@ -514,7 +554,7 @@ function formatChineseNumber(value: number): string {
 }
 
 function notificationIconLevelLabel(count: number): string {
-  return notificationIconLevels(count)[0]?.label || '未入品';
+  return notificationIconLevel(count).label;
 }
 
 function StatusBadge({ status }: { status: AgentState }) {
