@@ -453,7 +453,9 @@ function reduceAgent(current: AgentStatus, event: AgentEvent): AgentStatus {
         status: 'running',
         activeSince: current.activeSince ?? event.ts,
         currentTool: getToolName(payload),
-        task: getTask(payload, event.ts) ?? current.task
+        task: getTask(payload, event.ts) ?? current.task,
+        waitingFor: undefined,
+        approval: undefined
       };
     case 'tool_finished':
       return {
@@ -461,7 +463,9 @@ function reduceAgent(current: AgentStatus, event: AgentEvent): AgentStatus {
         status: 'running',
         activeSince: current.activeSince,
         currentTool: getToolName(payload) ?? current.currentTool,
-        task: getTask(payload, event.ts) ?? current.task
+        task: getTask(payload, event.ts) ?? current.task,
+        waitingFor: undefined,
+        approval: undefined
       };
     case 'approval_requested':
       return {

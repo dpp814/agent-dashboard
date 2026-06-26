@@ -60,8 +60,10 @@ export function App() {
   const transientApprovalTimers = useRef(new Map<string, number>());
   const historyQuery = useRef({ search: '', page: 0 });
   const visibleApprovals = useMemo(
-    () => snapshot.approvals.filter((approval) => !hiddenApprovalIds.has(approval.id)),
-    [snapshot.approvals, hiddenApprovalIds]
+    () => snapshot.approvals
+      .filter((approval) => !hiddenApprovalIds.has(approval.id))
+      .filter((approval) => isCurrentApproval(approval, snapshot.agents, snapshot.approvals)),
+    [snapshot.approvals, snapshot.agents, hiddenApprovalIds]
   );
   const actionableApprovals = useMemo(() => visibleApprovals.filter(isActionableApproval), [visibleApprovals]);
   const visibleAgents = useMemo(
@@ -615,6 +617,18 @@ function agentsOutsideApprovalCenter(agents: AgentStatus[], approvals: ApprovalR
 
 function isActionableApproval(approval: ApprovalRequest): boolean {
   return approval.provider === 'claude';
+}
+
+function isCurrentApproval(approval: ApprovalRequest, agents: AgentStatus[], approvals: ApprovalRequest[]): boolean {
+  if (approval.provider !== 'claude') return true;
+  const latestApproval = approvals
+    .filter((item) => item.provider === 'claude' && item.agentId === approval.agentId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  if (latestApproval?.id !== approval.id) return false;
+  const agent = agents.find((item) => item.id === approval.agentId);
+  return Boolean(agent?.approval?.id === approval.id ||
+    agent?.status === 'waiting_approval' ||
+    agent?.waitingFor?.toLowerCase().includes('permission'));
 }
 
 function isVisibleAgent(agent: AgentStatus, rows?: AgentStatus[]): boolean {
