@@ -331,8 +331,11 @@ export function App() {
 
 function Stat({ label, value, tone }: { label: string; value: number; tone: string }) {
   return (
-    <div className={`stat ${tone}`}>
-      <span>{label}</span>
+    <div className={`stat ${tone}${value > 0 ? ' active' : ''}`}>
+      <span className="statMeta">
+        <span className="statDot" aria-hidden="true" />
+        <span className="statLabel">{label}</span>
+      </span>
       <strong>{value}</strong>
     </div>
   );

@@ -245,31 +245,78 @@ input {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 14px;
-}
-
-.stat {
-  min-height: 72px;
-  padding: 12px 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  padding: 8px;
+  background: color-mix(in srgb, var(--surface-muted) 78%, var(--page));
+  border: 1px solid var(--border-soft);
   border-radius: 8px;
 }
 
-.stat span {
-  display: block;
-  color: var(--text-muted);
+.stat {
+  min-height: 58px;
+  padding: 11px 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgb(23 32 38 / 0.04);
+}
+
+.stat.active {
+  border-color: color-mix(in srgb, var(--stat-color) 30%, var(--border-soft));
+  box-shadow: 0 1px 3px rgb(23 32 38 / 0.07);
+}
+
+.statMeta {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.statDot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--stat-color);
+  box-shadow: 0 0 0 4px var(--stat-soft);
+}
+
+.statLabel {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stat strong {
-  display: block;
-  margin-top: 6px;
-  font-size: 26px;
+  flex: 0 0 auto;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
-.stat.green { border-left: 5px solid var(--success-text); }
-.stat.yellow { border-left: 5px solid var(--warning-strong); }
-.stat.blue { border-left: 5px solid var(--info-strong); }
-.stat.red { border-left: 5px solid var(--danger-strong); }
+.stat:not(.active) .statLabel {
+  color: var(--text-muted);
+  font-weight: 750;
+}
+
+.stat:not(.active) strong {
+  color: var(--text-strong);
+}
+
+.stat.green { --stat-color: var(--success-text); --stat-soft: var(--success-soft); }
+.stat.yellow { --stat-color: var(--warning-strong); --stat-soft: var(--warning-bg); }
+.stat.blue { --stat-color: var(--info-strong); --stat-soft: var(--info-bg); }
+.stat.red { --stat-color: var(--danger-strong); --stat-soft: var(--danger-soft); }
 
 .workspace {
   display: grid;
