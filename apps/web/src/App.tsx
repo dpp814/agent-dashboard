@@ -537,7 +537,7 @@ function notificationIconLevel(count: number): CultivationLevel {
     rankIndex,
     progress: finalRank ? 100 : level ? level * 10 : 100,
     nextBreakthroughIn: finalRank ? 0 : level ? 10 - level : 0,
-    breakthrough: count >= 10 && level === 0,
+    breakthrough: finalRank || (count >= 10 && level === 0),
     showBreakthroughLabel: count >= 10 && level === 0 && !finalRank
   };
 }
