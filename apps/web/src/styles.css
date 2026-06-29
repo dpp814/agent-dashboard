@@ -1009,7 +1009,14 @@ td {
   max-width: 0;
 }
 
-.historyTaskCell span {
+.historyTaskContent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.historyTaskContent span {
   display: -webkit-box;
   line-height: 1.35;
   overflow: hidden;
@@ -1017,6 +1024,63 @@ td {
   word-break: break-word;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+}
+
+.historyTaskActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 28px;
+}
+
+.historyCopyButton {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.historyCopyButton:hover:not(:disabled) {
+  color: var(--text-strong);
+  border-color: var(--border-strong);
+}
+
+.historyCopyButton.copied {
+  color: var(--success-text);
+  border-color: var(--success-border);
+  background: var(--success-soft);
+}
+
+.historyCopyButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.historyCopyFeedback {
+  width: 0;
+  overflow: hidden;
+  color: var(--success-text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 28px;
+  opacity: 0;
+  white-space: nowrap;
+  transition: opacity 120ms ease;
+}
+
+.historyCopyFeedback.show {
+  width: auto;
+  opacity: 1;
+}
+
+.historyCopyFeedback.failed {
+  color: var(--danger-text);
 }
 
 .empty {

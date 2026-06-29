@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Check, Clock, Eye, Flame, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, X } from 'lucide-react';
+import { Bell, Check, Clock, Copy, Eye, Flame, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, X } from 'lucide-react';
 import type { AgentState, AgentStatus, ApprovalRequest, DashboardSnapshot, TaskHistory, WsMessage } from '@agent-monitor/shared';
 import { connectWs, fetchSnapshot, resolveApproval } from './api';
 
@@ -418,6 +418,16 @@ function ApprovalCard({ approval, onResolve }: { approval: ApprovalRequest; onRe
 }
 
 function HistoryTable({ rows }: { rows: TaskHistory[] }) {
+  const [copyFeedback, setCopyFeedback] = useState<{ id: number; status: 'copied' | 'failed' }>();
+  const copyFeedbackTimer = useRef<number | undefined>(undefined);
+
+  async function onCopyTask(row: TaskHistory) {
+    const copied = await copyHistoryTask(row);
+    setCopyFeedback({ id: row.id, status: copied ? 'copied' : 'failed' });
+    if (copyFeedbackTimer.current) window.clearTimeout(copyFeedbackTimer.current);
+    copyFeedbackTimer.current = window.setTimeout(() => setCopyFeedback(undefined), 1200);
+  }
+
   if (!rows.length) return <EmptyState text="暂无卷宗" compact />;
   return (
     <div className="tableWrap">
@@ -439,21 +449,57 @@ function HistoryTable({ rows }: { rows: TaskHistory[] }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.id}>
-              <td>{row.provider.toUpperCase()}</td>
-              <td className="historyTaskCell" title={row.task || row.resultSummary || ''}>
-                <span>{row.task || summarizeResult(row.resultSummary) || '暂无记载'}</span>
-              </td>
-              <td><StatusBadge status={row.finalStatus} /></td>
-              <td>{row.endedAt ? formatDateTime(row.endedAt) : '-'}</td>
-              <td>{row.durationMs === undefined ? '-' : formatMs(row.durationMs)}</td>
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const taskText = historyTaskText(row);
+            const feedback = copyFeedback?.id === row.id ? copyFeedback.status : undefined;
+            return (
+              <tr key={row.id}>
+                <td>{row.provider.toUpperCase()}</td>
+                <td className="historyTaskCell" title={taskText}>
+                  <div className="historyTaskContent">
+                    <span>{taskText || '暂无记载'}</span>
+                    <div className="historyTaskActions">
+                      <button
+                        className={`historyCopyButton ${feedback === 'copied' ? 'copied' : ''}`}
+                        type="button"
+                        title={feedback === 'copied' ? '已复制' : '复制事务'}
+                        aria-label={feedback === 'copied' ? '已复制' : '复制事务'}
+                        disabled={!taskText}
+                        onClick={() => void onCopyTask(row)}
+                      >
+                        {feedback === 'copied' ? <Check size={14} /> : <Copy size={14} />}
+                      </button>
+                      <span className={`historyCopyFeedback ${feedback ? 'show' : ''} ${feedback === 'failed' ? 'failed' : ''}`}>
+                        {feedback === 'failed' ? '复制失败' : '已复制'}
+                      </span>
+                    </div>
+                  </div>
+                </td>
+                <td><StatusBadge status={row.finalStatus} /></td>
+                <td>{row.endedAt ? formatDateTime(row.endedAt) : '-'}</td>
+                <td>{row.durationMs === undefined ? '-' : formatMs(row.durationMs)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
+}
+
+function historyTaskText(row: TaskHistory): string {
+  return row.task || summarizeResult(row.resultSummary) || '';
+}
+
+async function copyHistoryTask(row: TaskHistory): Promise<boolean> {
+  const text = historyTaskText(row);
+  if (!text || !navigator.clipboard) return false;
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function NotificationIconUsageList({ icons, onPreview }: { icons: NotificationIconUsage[]; onPreview: (icon: NotificationIconUsage) => void }) {
