@@ -53,11 +53,13 @@ export function App() {
   const [error, setError] = useState<string>();
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>(() => notificationState());
   const [notificationIconUsage, setNotificationIconUsage] = useState<NotificationIconUsage[]>(() => readNotificationIconUsage());
+  const [highlightedNotificationIcon, setHighlightedNotificationIcon] = useState<string>();
   const [previewIcon, setPreviewIcon] = useState<NotificationIconUsage>();
   const [theme, setTheme] = useState<ThemeMode>(() => initialTheme());
   const [hiddenApprovalIds, setHiddenApprovalIds] = useState<Set<string>>(() => new Set());
   const notifiedApprovalIds = useRef(new Set<string>());
   const transientApprovalTimers = useRef(new Map<string, number>());
+  const highlightedNotificationIconTimer = useRef<number | undefined>(undefined);
   const historyQuery = useRef({ search: '', page: 0 });
   const visibleApprovals = useMemo(
     () => snapshot.approvals
@@ -171,7 +173,7 @@ export function App() {
         agents: normalizeAgents(upsert(current.agents, message.payload)),
         updatedAt: new Date().toISOString()
       }));
-      maybeNotify(message.payload);
+      maybeNotify(message.payload, highlightNotificationIcon);
       return;
     }
     if (message.type === 'approval') {
@@ -191,14 +193,17 @@ export function App() {
       }));
       if (message.payload.status === 'pending' && !notifiedApprovalIds.current.has(message.payload.id)) {
         notifiedApprovalIds.current.add(message.payload.id);
-        notifyApproval(message.payload, message.payload.provider === 'codex' ? () => revealTransientApproval(message.payload.id) : undefined);
+        notifyApproval(message.payload, (icon) => {
+          highlightNotificationIcon(icon);
+          if (message.payload.provider === 'codex') revealTransientApproval(message.payload.id);
+        });
       }
       if (message.payload.status !== 'pending') notifiedApprovalIds.current.delete(message.payload.id);
       return;
     }
     if (message.type === 'history') {
       const { search: currentSearch, page } = historyQuery.current;
-      maybeNotifyHistory(message.payload);
+      maybeNotifyHistory(message.payload, highlightNotificationIcon);
       if (currentSearch.trim()) {
         fetchSnapshot(currentSearch, historyPageSize, page * historyPageSize)
           .then((next) => setSnapshot((current) => ({ ...current, history: next.history })))
@@ -232,6 +237,13 @@ export function App() {
         }
         : agent)
     }));
+  }
+
+  function highlightNotificationIcon(icon: string) {
+    if (highlightedNotificationIconTimer.current) window.clearTimeout(highlightedNotificationIconTimer.current);
+    setHighlightedNotificationIcon(undefined);
+    window.setTimeout(() => setHighlightedNotificationIcon(icon), 0);
+    highlightedNotificationIconTimer.current = window.setTimeout(() => setHighlightedNotificationIcon(undefined), 2800);
   }
 
   const stats = useMemo(() => buildStats(snapshot.agents), [snapshot.agents]);
@@ -287,14 +299,14 @@ export function App() {
         </aside>
       </section>
 
-      <section className="iconUsagePanel">
+      <section className="iconUsagePanel" id="notification-icon-usage">
         <div className="sectionHeader">
           <div className="sectionTitle">
             <h2>道友图鉴</h2>
             <span>{notificationIconUsage.reduce((total, icon) => total + icon.count, 0)}</span>
           </div>
         </div>
-        <NotificationIconUsageList icons={notificationIconUsage} onPreview={setPreviewIcon} />
+        <NotificationIconUsageList icons={notificationIconUsage} highlightedPath={highlightedNotificationIcon} onPreview={setPreviewIcon} />
       </section>
 
       {previewIcon ? <NotificationIconPreview icon={previewIcon} onClose={() => setPreviewIcon(undefined)} /> : null}
@@ -502,19 +514,34 @@ async function copyHistoryTask(row: TaskHistory): Promise<boolean> {
   }
 }
 
-function NotificationIconUsageList({ icons, onPreview }: { icons: NotificationIconUsage[]; onPreview: (icon: NotificationIconUsage) => void }) {
+function NotificationIconUsageList({ icons, highlightedPath, onPreview }: {
+  icons: NotificationIconUsage[];
+  highlightedPath?: string;
+  onPreview: (icon: NotificationIconUsage) => void;
+}) {
   return (
     <div className="iconUsageGrid">
-      {icons.map((icon) => <NotificationIconUsageContent icon={icon} onPreview={onPreview} key={icon.path} />)}
+      {icons.map((icon) => (
+        <NotificationIconUsageContent
+          highlighted={icon.path === highlightedPath}
+          icon={icon}
+          onPreview={onPreview}
+          key={icon.path}
+        />
+      ))}
     </div>
   );
 }
 
-function NotificationIconUsageContent({ icon, onPreview }: { icon: NotificationIconUsage; onPreview: (icon: NotificationIconUsage) => void }) {
+function NotificationIconUsageContent({ icon, highlighted, onPreview }: {
+  icon: NotificationIconUsage;
+  highlighted: boolean;
+  onPreview: (icon: NotificationIconUsage) => void;
+}) {
   const image = <img src={icon.path} alt="" />;
   const cultivation = notificationIconLevel(icon.count);
   return (
-    <div className={`iconUsageItem ${cultivation.breakthrough ? 'isBreakthrough' : ''} rankAura${cultivation.rankIndex}`}>
+    <div className={`iconUsageItem ${cultivation.breakthrough ? 'isBreakthrough' : ''} ${highlighted ? 'isHighlighted' : ''} rankAura${cultivation.rankIndex}`}>
       <div className="iconUsageAvatar">
         {icon.count >= 10 ? (
           <button className="iconUsageImageButton" type="button" onClick={() => onPreview(icon)} aria-label={`查看${icon.name}原图`}>
@@ -874,18 +901,18 @@ function summarizeResult(value?: string) {
   return value?.split(/\r?\n/).find((line) => line.trim())?.trim();
 }
 
-function maybeNotify(agent: AgentStatus) {
-  if (agent.status === 'finished') notify(`${agent.name} 已圆满`, agent.task || '事务已毕', completionNotificationKey(agent.id, agent.status, agent.finishedAt, agent.lastResult));
-  if (agent.status === 'error') notify(`${agent.name} 生异象`, agent.lastResult || '行事未成', completionNotificationKey(agent.id, agent.status, agent.finishedAt, agent.lastResult));
-  if (agent.status === 'waiting_input') notify(`${agent.name} 待传言`, agent.waitingFor || '尚需应答', notificationKey(agent));
+function maybeNotify(agent: AgentStatus, onClick?: (icon: string) => void) {
+  if (agent.status === 'finished') notify(`${agent.name} 已圆满`, agent.task || '事务已毕', completionNotificationKey(agent.id, agent.status, agent.finishedAt, agent.lastResult), onClick);
+  if (agent.status === 'error') notify(`${agent.name} 生异象`, agent.lastResult || '行事未成', completionNotificationKey(agent.id, agent.status, agent.finishedAt, agent.lastResult), onClick);
+  if (agent.status === 'waiting_input') notify(`${agent.name} 待传言`, agent.waitingFor || '尚需应答', notificationKey(agent), onClick);
 }
 
-function maybeNotifyHistory(row: TaskHistory) {
-  if (row.finalStatus === 'finished') notify(`${providerLabel(row.provider)} 事务已圆满`, row.task || '事务已毕', completionNotificationKey(row.agentId, row.finalStatus, row.endedAt, row.resultSummary));
-  if (row.finalStatus === 'error') notify(`${providerLabel(row.provider)} 事务生异象`, row.resultSummary || '行事未成', completionNotificationKey(row.agentId, row.finalStatus, row.endedAt, row.resultSummary));
+function maybeNotifyHistory(row: TaskHistory, onClick?: (icon: string) => void) {
+  if (row.finalStatus === 'finished') notify(`${providerLabel(row.provider)} 事务已圆满`, row.task || '事务已毕', completionNotificationKey(row.agentId, row.finalStatus, row.endedAt, row.resultSummary), onClick);
+  if (row.finalStatus === 'error') notify(`${providerLabel(row.provider)} 事务生异象`, row.resultSummary || '行事未成', completionNotificationKey(row.agentId, row.finalStatus, row.endedAt, row.resultSummary), onClick);
 }
 
-function notifyApproval(approval: ApprovalRequest, onClick?: () => void) {
+function notifyApproval(approval: ApprovalRequest, onClick?: (icon: string) => void) {
   if (approval.provider === 'codex') {
     notify('Codex 候令', `${approval.summary} · 请回命令行应答`, undefined, onClick);
     return;
@@ -893,16 +920,16 @@ function notifyApproval(approval: ApprovalRequest, onClick?: () => void) {
   notify('使者候令', approval.summary, undefined, onClick);
 }
 
-function notify(title: string, body: string, key?: string, onClick?: () => void) {
+function notify(title: string, body: string, key?: string, onClick?: (icon: string) => void) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   if (key && notifiedAgentEventKeys.has(key)) return;
   if (key) notifiedAgentEventKeys.add(key);
   const icon = selectNotificationIcon();
   const notification = new Notification(title, { body, icon, badge: icon });
   notification.onclick = () => {
-    onClick?.();
+    onClick?.(icon);
     window.focus();
-    document.getElementById('authorization-center')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('notification-icon-usage')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     notification.close();
   };
 }
