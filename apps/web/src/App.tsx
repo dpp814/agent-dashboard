@@ -24,6 +24,10 @@ const emptySnapshot: DashboardSnapshot = {
   agents: [],
   approvals: [],
   history: [],
+  stats: {
+    todayFinished: 0,
+    todayError: 0
+  },
   updatedAt: new Date().toISOString()
 };
 
@@ -246,7 +250,10 @@ export function App() {
     highlightedNotificationIconTimer.current = window.setTimeout(() => setHighlightedNotificationIcon(undefined), 2800);
   }
 
-  const stats = useMemo(() => buildStats(snapshot.agents), [snapshot.agents]);
+  const stats = useMemo(
+    () => buildStats(visibleAgents, actionableApprovals, snapshot.stats),
+    [visibleAgents, actionableApprovals, snapshot.stats]
+  );
 
   return (
     <main className="shell">
@@ -263,7 +270,7 @@ export function App() {
 
       {error ? <div className="errorBar">{error}</div> : null}
 
-      <section className="stats">
+      <section className="stats" aria-label="状态概览">
         <Stat label="修行中" value={stats.running} tone="green" />
         <Stat label="候令中" value={stats.waiting} tone="yellow" />
         <Stat label="已圆满" value={stats.finished} tone="blue" />
@@ -683,7 +690,7 @@ function normalizeAgents(rows: AgentStatus[]): AgentStatus[] {
 }
 
 function normalizeSnapshot(snapshot: DashboardSnapshot): DashboardSnapshot {
-  return { ...snapshot, agents: normalizeAgents(snapshot.agents) };
+  return { ...snapshot, agents: normalizeAgents(snapshot.agents), stats: snapshot.stats ?? emptySnapshot.stats };
 }
 
 function agentsOutsideApprovalCenter(agents: AgentStatus[], approvals: ApprovalRequest[]): AgentStatus[] {
@@ -852,12 +859,12 @@ function agentIdentity(agent: AgentStatus): string {
   return `会话 ${agent.providerInstanceId}`;
 }
 
-function buildStats(agents: AgentStatus[]) {
+function buildStats(agents: AgentStatus[], approvals: ApprovalRequest[], snapshotStats: DashboardSnapshot['stats']) {
   return {
     running: agents.filter((agent) => agent.status === 'running').length,
-    waiting: agents.filter((agent) => agent.status === 'waiting_approval' || agent.status === 'waiting_input').length,
-    finished: agents.filter((agent) => agent.status === 'finished').length,
-    error: agents.filter((agent) => agent.status === 'error').length
+    waiting: approvals.length + agents.filter((agent) => agent.status === 'waiting_approval' || agent.status === 'waiting_input').length,
+    finished: snapshotStats.todayFinished,
+    error: snapshotStats.todayError
   };
 }
 

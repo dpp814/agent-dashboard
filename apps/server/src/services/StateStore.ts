@@ -113,6 +113,7 @@ export class StateStore {
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
       approvals: this.db.listApprovals(),
       history: this.db.listHistory(search, historyLimit, historyOffset),
+      stats: this.db.countTodayHistory(...todayRange()),
       updatedAt: new Date().toISOString()
     };
   }
@@ -266,6 +267,14 @@ function earlierIso(...values: Array<string | undefined>): string | undefined {
       return Number.isFinite(Date.parse(value));
     })
     .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
+}
+
+function todayRange(): [string, string] {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return [start.toISOString(), end.toISOString()];
 }
 
 function isVisibleAgent(agent: AgentStatus, agents?: Map<string, AgentStatus>): boolean {

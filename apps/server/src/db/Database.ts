@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AgentEvent, AgentStatus, ApprovalRequest, TaskHistory } from '@agent-monitor/shared';
+import type { AgentEvent, AgentStatus, ApprovalRequest, DashboardStats, TaskHistory } from '@agent-monitor/shared';
 import { serverConfig } from '../config.js';
 
 export class AppDatabase {
@@ -252,6 +252,19 @@ export class AppDatabase {
       ORDER BY COALESCE(ended_at, started_at) DESC
       LIMIT ? OFFSET ?
     `).all(like, like, like, like, like, like, safeLimit, safeOffset).map(rowToHistory);
+  }
+
+  countTodayHistory(sinceIso: string, beforeIso: string): DashboardStats {
+    const rows = this.db.prepare(`
+      SELECT final_status AS status, COUNT(*) AS count
+      FROM task_history
+      WHERE ended_at >= ? AND ended_at < ? AND final_status IN ('finished', 'error')
+      GROUP BY final_status
+    `).all(sinceIso, beforeIso) as Array<{ status: string; count: number }>;
+    return {
+      todayFinished: rows.find((row) => row.status === 'finished')?.count ?? 0,
+      todayError: rows.find((row) => row.status === 'error')?.count ?? 0
+    };
   }
 
   cleanupHistory(cutoffIso: string): void {

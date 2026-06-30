@@ -207,9 +207,9 @@ Codex hook events:
 ### 顶部状态概览
 
 - `修行中`: running agents
-- `候令中`: waiting approval/input
-- `已圆满`: finished agents
-- `生异象`: error agents
+- `候令中`: actionable approvals plus waiting approval/input agents
+- `已圆满`: finished task history for today
+- `生异象`: error task history for today
 - `已出关`: WebSocket connected
 - `闭关中`: WebSocket disconnected
 

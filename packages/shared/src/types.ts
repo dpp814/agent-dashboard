@@ -76,10 +76,16 @@ export interface TaskHistory {
   resultSummary?: string;
 }
 
+export interface DashboardStats {
+  todayFinished: number;
+  todayError: number;
+}
+
 export interface DashboardSnapshot {
   agents: AgentStatus[];
   approvals: ApprovalRequest[];
   history: TaskHistory[];
+  stats: DashboardStats;
   updatedAt: string;
 }
 
