@@ -87,6 +87,7 @@ export class StateStore {
       history = this.db.insertHistory({
         agentId: agent.id,
         provider: agent.provider,
+        providerInstanceId: agent.providerInstanceId,
         task: eventTask ?? activeTask?.task ?? agent.task,
         startedAt,
         endedAt,

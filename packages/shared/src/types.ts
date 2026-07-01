@@ -68,6 +68,7 @@ export interface TaskHistory {
   id: number;
   agentId: string;
   provider: AgentProviderType;
+  providerInstanceId?: string;
   task?: string;
   startedAt?: string;
   endedAt?: string;

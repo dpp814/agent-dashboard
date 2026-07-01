@@ -437,12 +437,19 @@ function ApprovalCard({ approval, onResolve }: { approval: ApprovalRequest; onRe
 }
 
 function HistoryTable({ rows }: { rows: TaskHistory[] }) {
-  const [copyFeedback, setCopyFeedback] = useState<{ id: number; status: 'copied' | 'failed' }>();
+  const [copyFeedback, setCopyFeedback] = useState<{ id: number; target: 'task' | 'resume'; status: 'copied' | 'failed' }>();
   const copyFeedbackTimer = useRef<number | undefined>(undefined);
 
   async function onCopyTask(row: TaskHistory) {
     const copied = await copyHistoryTask(row);
-    setCopyFeedback({ id: row.id, status: copied ? 'copied' : 'failed' });
+    setCopyFeedback({ id: row.id, target: 'task', status: copied ? 'copied' : 'failed' });
+    if (copyFeedbackTimer.current) window.clearTimeout(copyFeedbackTimer.current);
+    copyFeedbackTimer.current = window.setTimeout(() => setCopyFeedback(undefined), 1200);
+  }
+
+  async function onCopyResume(row: TaskHistory) {
+    const copied = await copyHistoryResume(row);
+    setCopyFeedback({ id: row.id, target: 'resume', status: copied ? 'copied' : 'failed' });
     if (copyFeedbackTimer.current) window.clearTimeout(copyFeedbackTimer.current);
     copyFeedbackTimer.current = window.setTimeout(() => setCopyFeedback(undefined), 1200);
   }
@@ -470,7 +477,9 @@ function HistoryTable({ rows }: { rows: TaskHistory[] }) {
         <tbody>
           {rows.map((row) => {
             const taskText = historyTaskText(row);
-            const feedback = copyFeedback?.id === row.id ? copyFeedback.status : undefined;
+            const resumeCommand = historyResumeCommand(row);
+            const taskFeedback = copyFeedback?.id === row.id && copyFeedback.target === 'task' ? copyFeedback.status : undefined;
+            const resumeFeedback = copyFeedback?.id === row.id && copyFeedback.target === 'resume' ? copyFeedback.status : undefined;
             return (
               <tr key={row.id}>
                 <td>{row.provider.toUpperCase()}</td>
@@ -479,17 +488,27 @@ function HistoryTable({ rows }: { rows: TaskHistory[] }) {
                     <span>{taskText || '暂无记载'}</span>
                     <div className="historyTaskActions">
                       <button
-                        className={`historyCopyButton ${feedback === 'copied' ? 'copied' : ''}`}
+                        className={`historyCopyButton ${taskFeedback === 'copied' ? 'copied' : ''}`}
                         type="button"
-                        title={feedback === 'copied' ? '已复制' : '复制事务'}
-                        aria-label={feedback === 'copied' ? '已复制' : '复制事务'}
+                        title={taskFeedback === 'copied' ? '已复制' : '复制事务'}
+                        aria-label={taskFeedback === 'copied' ? '已复制' : '复制事务'}
                         disabled={!taskText}
                         onClick={() => void onCopyTask(row)}
                       >
-                        {feedback === 'copied' ? <Check size={14} /> : <Copy size={14} />}
+                        {taskFeedback === 'copied' ? <Check size={14} /> : <Copy size={14} />}
                       </button>
-                      <span className={`historyCopyFeedback ${feedback ? 'show' : ''} ${feedback === 'failed' ? 'failed' : ''}`}>
-                        {feedback === 'failed' ? '复制失败' : '已复制'}
+                      <button
+                        className={`historyCopyButton ${resumeFeedback === 'copied' ? 'copied' : ''}`}
+                        type="button"
+                        title={resumeFeedback === 'copied' ? '已复制' : '复制会话'}
+                        aria-label={resumeFeedback === 'copied' ? '已复制' : '复制会话'}
+                        disabled={!resumeCommand}
+                        onClick={() => void onCopyResume(row)}
+                      >
+                        {resumeFeedback === 'copied' ? <Check size={14} /> : <Terminal size={14} />}
+                      </button>
+                      <span className={`historyCopyFeedback ${taskFeedback || resumeFeedback ? 'show' : ''} ${(taskFeedback ?? resumeFeedback) === 'failed' ? 'failed' : ''}`}>
+                        {(taskFeedback ?? resumeFeedback) === 'failed' ? '复制失败' : '已复制'}
                       </span>
                     </div>
                   </div>
@@ -510,8 +529,30 @@ function historyTaskText(row: TaskHistory): string {
   return row.task || summarizeResult(row.resultSummary) || '';
 }
 
+function historyResumeCommand(row: TaskHistory): string | undefined {
+  if (!row.providerInstanceId) return undefined;
+  if (row.provider === 'claude' && !row.providerInstanceId.startsWith('process:')) {
+    return `claude --resume ${row.providerInstanceId}`;
+  }
+  if (row.provider === 'codex' && !/^\d+$/.test(row.providerInstanceId)) {
+    return `codex resume ${row.providerInstanceId}`;
+  }
+  return undefined;
+}
+
 async function copyHistoryTask(row: TaskHistory): Promise<boolean> {
   const text = historyTaskText(row);
+  if (!text || !navigator.clipboard) return false;
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function copyHistoryResume(row: TaskHistory): Promise<boolean> {
+  const text = historyResumeCommand(row);
   if (!text || !navigator.clipboard) return false;
   try {
     await navigator.clipboard.writeText(text);

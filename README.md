@@ -7,7 +7,7 @@
 - 监控 Claude Code、Codex CLI 进程和 Hook 事件
 - 实时状态看板：修行、候令、待言、圆满、异象、坐化
 - 授令阁：集中展示授权请求，Claude 可在 Web UI 里准行/驳回
-- 卷宗：保存近期任务历史，支持搜索和分页
+- 卷宗：保存近期任务历史，支持搜索、分页、复制事务和复制会话恢复命令
 - 道友图鉴：统计通知头像使用次数，并按修仙境界升级
 - 浏览器通知：任务圆满、任务异常、等待输入、待授权
 - 三套主题：宣纸、夜墨、竹青
@@ -258,12 +258,12 @@ Upgrade rule:
 Task history table:
 
 - 道友: provider
-- 事务: prompt/result summary
+- 事务: prompt/result summary, with copy task and copy resume command actions
 - 境况: final state
 - 归档: end time
 - 耗时: duration
 
-Search filters task, provider, agent id, final status, and result summary.
+Search filters task, provider, session id, agent id, final status, and result summary.
 
 ## Data Storage
 

@@ -56,6 +56,7 @@ export class AppDatabase {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         agent_id TEXT NOT NULL,
         provider TEXT NOT NULL,
+        provider_instance_id TEXT,
         task TEXT,
         started_at TEXT,
         ended_at TEXT,
@@ -65,6 +66,7 @@ export class AppDatabase {
       );
     `);
     this.addColumnIfMissing('agents', 'active_since', 'TEXT');
+    this.addColumnIfMissing('task_history', 'provider_instance_id', 'TEXT');
     this.dedupeCompletionHistory();
     this.db.exec(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_task_history_agent_ended
@@ -155,11 +157,14 @@ export class AppDatabase {
 
   insertHistory(row: Omit<TaskHistory, 'id'>): TaskHistory {
     this.db.prepare(`
-      INSERT OR IGNORE INTO task_history (agent_id, provider, task, started_at, ended_at, duration_ms, final_status, result_summary)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO task_history (
+        agent_id, provider, provider_instance_id, task, started_at, ended_at, duration_ms, final_status, result_summary
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       row.agentId,
       row.provider,
+      row.providerInstanceId ?? null,
       row.task ?? null,
       row.startedAt ?? null,
       row.endedAt ?? null,
@@ -248,10 +253,10 @@ export class AppDatabase {
     const safeOffset = Math.max(0, Math.floor(offset));
     return this.db.prepare(`
       SELECT * FROM task_history
-      WHERE (? = '%%' OR task LIKE ? OR provider LIKE ? OR agent_id LIKE ? OR final_status LIKE ? OR result_summary LIKE ?)
+      WHERE (? = '%%' OR task LIKE ? OR provider LIKE ? OR provider_instance_id LIKE ? OR agent_id LIKE ? OR final_status LIKE ? OR result_summary LIKE ?)
       ORDER BY COALESCE(ended_at, started_at) DESC
       LIMIT ? OFFSET ?
-    `).all(like, like, like, like, like, like, safeLimit, safeOffset).map(rowToHistory);
+    `).all(like, like, like, like, like, like, like, safeLimit, safeOffset).map(rowToHistory);
   }
 
   countTodayHistory(sinceIso: string, beforeIso: string): DashboardStats {
@@ -320,7 +325,7 @@ export class AppDatabase {
 
   private backfillMissingCompletionHistory(): void {
     const rows = this.db.prepare(`
-      SELECT e.id, e.agent_id, e.provider, e.type, e.ts, e.payload_json
+      SELECT e.id, e.agent_id, e.provider, e.provider_instance_id, e.type, e.ts, e.payload_json
       FROM agent_events e
       WHERE e.type IN ('finished', 'error')
         AND NOT EXISTS (
@@ -333,6 +338,7 @@ export class AppDatabase {
       id: number;
       agent_id: string;
       provider: TaskHistory['provider'];
+      provider_instance_id: string | null;
       type: 'finished' | 'error';
       ts: string;
       payload_json: string;
@@ -352,6 +358,7 @@ export class AppDatabase {
       this.insertHistory({
         agentId: row.agent_id,
         provider: row.provider,
+        providerInstanceId: nullableString(row.provider_instance_id),
         task,
         startedAt: started.startedAt,
         endedAt: row.ts,
@@ -403,6 +410,7 @@ function rowToHistory(row: Record<string, unknown>): TaskHistory {
     id: Number(row.id),
     agentId: String(row.agent_id),
     provider: row.provider as TaskHistory['provider'],
+    providerInstanceId: nullableString(row.provider_instance_id),
     task: nullableString(row.task),
     startedAt: nullableString(row.started_at),
     endedAt: nullableString(row.ended_at),
