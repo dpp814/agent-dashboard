@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Check, Clock, Copy, Eye, Flame, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, X } from 'lucide-react';
+import { Bell, Check, Clock, Copy, Eye, Flame, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, Volume2, VolumeX, X } from 'lucide-react';
 import type { AgentState, AgentStatus, ApprovalRequest, DashboardSnapshot, TaskHistory, WsMessage } from '@agent-monitor/shared';
 import { connectWs, fetchSnapshot, resolveApproval } from './api';
 
@@ -38,6 +38,8 @@ const transientApprovalMs = 5000;
 const notifiedAgentEventKeys = new Set<string>();
 const notificationIconUsageStorageKey = 'agent-monitor-notification-icon-usage';
 const notificationIconUsageEvent = 'agent-monitor-notification-icon-usage-change';
+const notificationSoundStorageKey = 'agent-monitor-notification-sound';
+let notificationAudioContext: AudioContext | undefined;
 const cultivationRanks = ['炼气', '筑基', '结丹', '元婴', '化神', '炼虚', '合体', '大乘', '真仙', '金仙', '太乙', '大罗', '道祖'];
 const notificationIconPaths = [
   '/notification-icon/hanli.png',
@@ -60,6 +62,7 @@ export function App() {
   const [highlightedNotificationIcon, setHighlightedNotificationIcon] = useState<string>();
   const [previewIcon, setPreviewIcon] = useState<NotificationIconUsage>();
   const [theme, setTheme] = useState<ThemeMode>(() => initialTheme());
+  const [notificationSoundEnabled, setNotificationSoundEnabled] = useState(() => initialNotificationSoundEnabled());
   const [hiddenApprovalIds, setHiddenApprovalIds] = useState<Set<string>>(() => new Set());
   const notifiedApprovalIds = useRef(new Set<string>());
   const transientApprovalTimers = useRef(new Map<string, number>());
@@ -86,6 +89,23 @@ export function App() {
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem(themeStorageKey, theme);
   }, [theme]);
+
+  useEffect(() => {
+    window.localStorage.setItem(notificationSoundStorageKey, notificationSoundEnabled ? '1' : '0');
+  }, [notificationSoundEnabled]);
+
+  useEffect(() => {
+    if (!notificationSoundEnabled) return;
+    const unlock = () => {
+      void unlockNotificationSound();
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, [notificationSoundEnabled]);
 
   useEffect(() => {
     const onUsageChange = () => setNotificationIconUsage(readNotificationIconUsage());
@@ -142,12 +162,24 @@ export function App() {
 
   async function onRequestNotifications() {
     if (!('Notification' in window) || Notification.permission === 'denied') return;
+    void unlockNotificationSound();
     const permission = await Notification.requestPermission();
     setNotificationPermission(permission);
   }
 
   function onCycleTheme() {
     setTheme((current) => themeModes[(themeModes.indexOf(current) + 1) % themeModes.length]);
+  }
+
+  function onToggleNotificationSound() {
+    const next = !notificationSoundEnabled;
+    setNotificationSoundEnabled(next);
+    window.localStorage.setItem(notificationSoundStorageKey, next ? '1' : '0');
+    if (next) {
+      void playNotificationSound(true);
+    } else {
+      void notificationAudioContext?.suspend().catch(() => {});
+    }
   }
 
   function revealTransientApproval(id: string) {
@@ -263,6 +295,7 @@ export function App() {
         </div>
         <div className="topbarActions">
           <NotificationButton permission={notificationPermission} onRequest={onRequestNotifications} />
+          <SoundButton enabled={notificationSoundEnabled} onToggle={onToggleNotificationSound} />
           <ThemeButton theme={theme} onCycle={onCycleTheme} />
           <span className={`connection ${connected ? 'ok' : 'bad'}`}>{connected ? '已出关' : '闭关中'}</span>
         </div>
@@ -373,6 +406,16 @@ function NotificationButton({ permission, onRequest }: { permission: Notificatio
     >
       <Bell size={18} />
       <span>{notificationLabel(permission)}</span>
+    </button>
+  );
+}
+
+function SoundButton({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
+  const title = enabled ? '传音已启' : '静默中';
+  return (
+    <button className={`iconButton soundButton ${enabled ? 'enabled' : 'disabled'}`} title={title} aria-label={title} onClick={onToggle}>
+      {enabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+      <span>{enabled ? '传音' : '静默'}</span>
     </button>
   );
 }
@@ -974,12 +1017,68 @@ function notify(title: string, body: string, key?: string, onClick?: (icon: stri
   if (key) notifiedAgentEventKeys.add(key);
   const icon = selectNotificationIcon();
   const notification = new Notification(title, { body, icon, badge: icon });
+  playNotificationSound();
   notification.onclick = () => {
     onClick?.(icon);
     window.focus();
     document.getElementById('notification-icon-usage')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     notification.close();
   };
+}
+
+async function playNotificationSound(force = false) {
+  if (!force && !isNotificationSoundEnabled()) return;
+  const context = getNotificationAudioContext();
+  if (!context) return;
+  try {
+    await resumeNotificationAudioContext(context);
+    playTone(context, 660, 0, 0.11);
+    playTone(context, 880, 0.13, 0.16);
+  } catch {
+    // Browsers may block audio before user interaction.
+  }
+}
+
+async function unlockNotificationSound() {
+  if (!isNotificationSoundEnabled()) return;
+  const context = getNotificationAudioContext();
+  if (!context) return;
+  try {
+    await resumeNotificationAudioContext(context);
+  } catch {
+    // Browsers may block audio before user interaction.
+  }
+}
+
+async function resumeNotificationAudioContext(context: AudioContext) {
+  if (context.state === 'suspended') await context.resume();
+}
+
+function getNotificationAudioContext(): AudioContext | undefined {
+  if (notificationAudioContext && notificationAudioContext.state !== 'closed') return notificationAudioContext;
+  const AudioContextCtor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) return;
+  try {
+    notificationAudioContext = new AudioContextCtor();
+    return notificationAudioContext;
+  } catch {
+    return undefined;
+  }
+}
+
+function playTone(context: AudioContext, frequency: number, delay: number, duration: number) {
+  const start = context.currentTime + delay;
+  const gain = context.createGain();
+  const oscillator = context.createOscillator();
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(frequency, start);
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(0.14, start + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start(start);
+  oscillator.stop(start + duration + 0.02);
 }
 
 function selectNotificationIcon(): string {
@@ -1055,6 +1154,14 @@ function notificationTitle(permission: NotificationPermissionState): string {
     case 'unsupported': return '此境不支持灵讯';
     default: return '开启灵讯';
   }
+}
+
+function initialNotificationSoundEnabled(): boolean {
+  return window.localStorage.getItem(notificationSoundStorageKey) !== '0';
+}
+
+function isNotificationSoundEnabled(): boolean {
+  return window.localStorage.getItem(notificationSoundStorageKey) !== '0';
 }
 
 function initialTheme(): ThemeMode {

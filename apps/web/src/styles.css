@@ -212,6 +212,16 @@ input {
   padding: 0 10px;
 }
 
+.soundButton {
+  padding: 0 10px;
+}
+
+.soundButton.enabled {
+  color: var(--success-text);
+  border-color: var(--success-border);
+  background: var(--success-soft);
+}
+
 .connection {
   min-width: 78px;
   padding: 8px 12px;

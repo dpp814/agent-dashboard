@@ -9,7 +9,7 @@
 - 授令阁：集中展示授权请求，Claude 可在 Web UI 里准行/驳回
 - 卷宗：保存近期任务历史，支持搜索、分页、复制事务和复制会话恢复命令
 - 道友图鉴：统计通知头像使用次数，并按修仙境界升级
-- 浏览器通知：任务圆满、任务异常、等待输入、待授权
+- 浏览器通知：任务圆满、任务异常、等待输入、待授权，支持传音/静默提示音切换
 - 三套主题：宣纸、夜墨、竹青
 - SQLite 本地存储
 - 可选 API Token 保护
@@ -239,6 +239,8 @@ Codex entries auto-expire after `AGENT_MONITOR_CODEX_APPROVAL_TTL_MS`, or resolv
 ### 道友图鉴
 
 Browser notifications randomly use one of the bundled avatars. The selected avatar gets one use count, stored in browser `localStorage`.
+
+The top-right `传音/静默` control toggles a short notification sound for browser notification cards.
 
 Cultivation ranks:
 
