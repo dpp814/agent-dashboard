@@ -114,6 +114,7 @@ export class StateStore {
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
       approvals: this.db.listApprovals(),
       history: this.db.listHistory(search, historyLimit, historyOffset),
+      historyTotal: this.db.countHistory(search),
       stats: this.db.countTodayHistory(...todayRange()),
       updatedAt: new Date().toISOString()
     };

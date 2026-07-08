@@ -86,6 +86,7 @@ export interface DashboardSnapshot {
   agents: AgentStatus[];
   approvals: ApprovalRequest[];
   history: TaskHistory[];
+  historyTotal: number;
   stats: DashboardStats;
   updatedAt: string;
 }

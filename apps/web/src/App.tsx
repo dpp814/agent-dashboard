@@ -24,6 +24,7 @@ const emptySnapshot: DashboardSnapshot = {
   agents: [],
   approvals: [],
   history: [],
+  historyTotal: 0,
   stats: {
     todayFinished: 0,
     todayError: 0
@@ -286,6 +287,7 @@ export function App() {
     () => buildStats(visibleAgents, actionableApprovals, snapshot.stats),
     [visibleAgents, actionableApprovals, snapshot.stats]
   );
+  const historyNextDisabled = (historyPage + 1) * historyPageSize >= snapshot.historyTotal;
 
   return (
     <main className="shell">
@@ -372,9 +374,12 @@ export function App() {
           </div>
         <HistoryTable rows={snapshot.history} />
         <div className="pager historyPager">
-          <button disabled={historyPage === 0} onClick={() => setHistoryPage((page) => Math.max(0, page - 1))}>上卷</button>
-          <span>第 {historyPage + 1} 页</span>
-          <button disabled={snapshot.history.length < historyPageSize} onClick={() => setHistoryPage((page) => page + 1)}>下卷</button>
+          <div className="pagerControls">
+            <button disabled={historyPage === 0} onClick={() => setHistoryPage((page) => Math.max(0, page - 1))}>上卷</button>
+            <span className="pagerPage">第 {historyPage + 1} 页</span>
+            <button disabled={historyNextDisabled} onClick={() => setHistoryPage((page) => page + 1)}>下卷</button>
+          </div>
+          <span className="pagerMeta">每页 {historyPageSize} 条，共 {snapshot.historyTotal} 条</span>
         </div>
       </section>
     </main>
@@ -774,7 +779,12 @@ function normalizeAgents(rows: AgentStatus[]): AgentStatus[] {
 }
 
 function normalizeSnapshot(snapshot: DashboardSnapshot): DashboardSnapshot {
-  return { ...snapshot, agents: normalizeAgents(snapshot.agents), stats: snapshot.stats ?? emptySnapshot.stats };
+  return {
+    ...snapshot,
+    agents: normalizeAgents(snapshot.agents),
+    historyTotal: snapshot.historyTotal ?? snapshot.history.length,
+    stats: snapshot.stats ?? emptySnapshot.stats
+  };
 }
 
 function agentsOutsideApprovalCenter(agents: AgentStatus[], approvals: ApprovalRequest[]): AgentStatus[] {

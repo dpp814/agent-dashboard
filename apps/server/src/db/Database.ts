@@ -259,6 +259,15 @@ export class AppDatabase {
     `).all(like, like, like, like, like, like, like, safeLimit, safeOffset).map(rowToHistory);
   }
 
+  countHistory(search = ''): number {
+    const like = `%${search}%`;
+    const row = this.db.prepare(`
+      SELECT COUNT(*) AS count FROM task_history
+      WHERE (? = '%%' OR task LIKE ? OR provider LIKE ? OR provider_instance_id LIKE ? OR agent_id LIKE ? OR final_status LIKE ? OR result_summary LIKE ?)
+    `).get(like, like, like, like, like, like, like) as { count: number } | undefined;
+    return row?.count ?? 0;
+  }
+
   countTodayHistory(sinceIso: string, beforeIso: string): DashboardStats {
     const rows = this.db.prepare(`
       SELECT final_status AS status, COUNT(*) AS count
