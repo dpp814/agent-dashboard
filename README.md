@@ -131,7 +131,7 @@ Environment variables:
 | `AGENT_MONITOR_TOKEN` | empty | Optional bearer token for API, WebSocket, hooks |
 | `AGENT_MONITOR_DATA_DIR` | `.agent-monitor` | SQLite and PID data directory |
 | `AGENT_MONITOR_POLL_MS` | `2500` | Discovery polling interval |
-| `AGENT_MONITOR_HISTORY_DAYS` | `7` | Retention for history/events/resolved approvals |
+| `AGENT_MONITOR_HISTORY_DAYS` | `14` | Retention for history/events/resolved approvals |
 | `AGENT_MONITOR_APPROVAL_TIMEOUT_MS` | `570000` | Claude permission request timeout |
 | `AGENT_MONITOR_CODEX_APPROVAL_TTL_MS` | `120000` | Codex pending approval display TTL |
 | `AGENT_MONITOR_WINDOWS_PS` | `1` | Enable Windows process discovery from WSL2 |
