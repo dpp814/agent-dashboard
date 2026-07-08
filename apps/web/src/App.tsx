@@ -131,7 +131,7 @@ export function App() {
     historyQuery.current = { search, page: historyPage };
     const timer = window.setTimeout(() => {
       fetchSnapshot(search, historyPageSize, historyPage * historyPageSize)
-        .then((next) => setSnapshot((current) => ({ ...current, history: next.history })))
+        .then((next) => setSnapshot((current) => mergeHistorySnapshot(current, next)))
         .catch(() => {});
     }, 250);
     return () => window.clearTimeout(timer);
@@ -243,14 +243,17 @@ export function App() {
       maybeNotifyHistory(message.payload, highlightNotificationIcon);
       if (currentSearch.trim()) {
         fetchSnapshot(currentSearch, historyPageSize, page * historyPageSize)
-          .then((next) => setSnapshot((current) => ({ ...current, history: next.history })))
+          .then((next) => setSnapshot((current) => mergeHistorySnapshot(current, next)))
           .catch(() => {});
       } else {
         setSnapshot((current) => ({
           ...current,
           history: page === 0
             ? [message.payload, ...current.history.filter((item) => item.id !== message.payload.id)].slice(0, historyPageSize)
-            : current.history
+            : current.history,
+          historyTotal: current.history.some((item) => item.id === message.payload.id)
+            ? current.historyTotal
+            : current.historyTotal + 1
         }));
       }
       return;
@@ -784,6 +787,14 @@ function normalizeSnapshot(snapshot: DashboardSnapshot): DashboardSnapshot {
     agents: normalizeAgents(snapshot.agents),
     historyTotal: snapshot.historyTotal ?? snapshot.history.length,
     stats: snapshot.stats ?? emptySnapshot.stats
+  };
+}
+
+function mergeHistorySnapshot(current: DashboardSnapshot, next: DashboardSnapshot): DashboardSnapshot {
+  return {
+    ...current,
+    history: next.history,
+    historyTotal: next.historyTotal ?? next.history.length
   };
 }
 
