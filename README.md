@@ -139,6 +139,8 @@ Environment variables:
 | `VITE_API_BASE` | `http://127.0.0.1:8787` | Web client API base at build/dev time |
 | `VITE_AGENT_MONITOR_TOKEN` | empty | Web client token at build/dev time |
 
+History, event, and resolved approval records are retained for 14 days by default.
+
 Token example:
 
 ```bash
