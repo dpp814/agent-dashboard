@@ -372,6 +372,20 @@ export function App() {
                   }}
                   placeholder="查阅卷宗"
                 />
+                {search ? (
+                  <button
+                    className="searchClearButton"
+                    type="button"
+                    title="清空搜索"
+                    aria-label="清空搜索"
+                    onClick={() => {
+                      setSearch('');
+                      setHistoryPage(0);
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                ) : null}
               </label>
             </div>
           </div>

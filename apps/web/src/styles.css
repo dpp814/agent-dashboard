@@ -981,6 +981,7 @@ input {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 210px;
   padding: 0 10px;
   border: 1px solid var(--input-border);
   border-radius: 8px;
@@ -988,11 +989,33 @@ input {
 }
 
 .searchBox input {
+  min-width: 0;
   width: 150px;
+  flex: 1;
   border: 0;
   outline: 0;
   color: var(--text);
   background: transparent;
+}
+
+.searchClearButton {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.searchClearButton:hover {
+  color: var(--text-strong);
+  background: var(--surface-subtle);
 }
 
 .pager {
