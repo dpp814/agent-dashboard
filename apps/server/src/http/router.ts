@@ -22,7 +22,8 @@ export function createRouter(store: StateStore, ws: WebSocketHub) {
         json(res, store.snapshot(
           url.searchParams.get('search') ?? '',
           Number(url.searchParams.get('limit') ?? 50),
-          Number(url.searchParams.get('offset') ?? 0)
+          Number(url.searchParams.get('offset') ?? 0),
+          historyProviderFilter(url.searchParams.get('provider'))
         ));
         return;
       }
@@ -125,6 +126,10 @@ function hookProvider(pathname: string): 'claude' | 'codex' | undefined {
   if (pathname === '/api/hooks/claude') return 'claude';
   if (pathname === '/api/hooks/codex') return 'codex';
   return undefined;
+}
+
+function historyProviderFilter(value: string | null): 'all' | 'claude' | 'codex' {
+  return value === 'claude' || value === 'codex' ? value : 'all';
 }
 
 function isPermissionRequest(body: Record<string, unknown>): boolean {

@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentStatus, ApprovalRequest, DashboardSnapshot, TaskHistory } from '@agent-monitor/shared';
+import type { AgentEvent, AgentStatus, ApprovalRequest, DashboardSnapshot, HistoryProviderFilter, TaskHistory } from '@agent-monitor/shared';
 import { readFileSync } from 'node:fs';
 import { AppDatabase } from '../db/Database.js';
 import { newId, stableId } from '../util/ids.js';
@@ -101,7 +101,7 @@ export class StateStore {
     return { agent, approval, completed, history };
   }
 
-  snapshot(search = '', historyLimit = 50, historyOffset = 0): DashboardSnapshot {
+  snapshot(search = '', historyLimit = 50, historyOffset = 0, historyProvider: HistoryProviderFilter = 'all'): DashboardSnapshot {
     this.expireOldCodexApprovals();
     this.clearOrphanedApprovalAgents();
     const agents = [...this.agents.values()];
@@ -113,8 +113,8 @@ export class StateStore {
         .map((agent, _, visibleAgents) => ({ ...agent, name: displayName(agent, visibleAgents) }))
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
       approvals: this.db.listApprovals(),
-      history: this.db.listHistory(search, historyLimit, historyOffset),
-      historyTotal: this.db.countHistory(search),
+      history: this.db.listHistory(search, historyProvider, historyLimit, historyOffset),
+      historyTotal: this.db.countHistory(search, historyProvider),
       stats: this.db.countTodayHistory(...todayRange()),
       updatedAt: new Date().toISOString()
     };

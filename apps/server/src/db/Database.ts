@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AgentEvent, AgentStatus, ApprovalRequest, DashboardStats, TaskHistory } from '@agent-monitor/shared';
+import type { AgentEvent, AgentStatus, ApprovalRequest, DashboardStats, HistoryProviderFilter, TaskHistory } from '@agent-monitor/shared';
 import { serverConfig } from '../config.js';
 
 export class AppDatabase {
@@ -247,24 +247,28 @@ export class AppDatabase {
     return approvals.map((approval) => approval.agentId);
   }
 
-  listHistory(search = '', limit = 50, offset = 0): TaskHistory[] {
+  listHistory(search = '', provider: HistoryProviderFilter = 'all', limit = 50, offset = 0): TaskHistory[] {
     const like = `%${search}%`;
+    const safeProvider = historyProviderFilter(provider);
     const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
     const safeOffset = Math.max(0, Math.floor(offset));
     return this.db.prepare(`
       SELECT * FROM task_history
-      WHERE (? = '%%' OR task LIKE ? OR provider LIKE ? OR provider_instance_id LIKE ? OR agent_id LIKE ? OR final_status LIKE ? OR result_summary LIKE ?)
+      WHERE (? = 'all' OR provider = ?)
+        AND (? = '%%' OR task LIKE ? OR provider LIKE ? OR provider_instance_id LIKE ? OR agent_id LIKE ? OR final_status LIKE ? OR result_summary LIKE ?)
       ORDER BY COALESCE(ended_at, started_at) DESC
       LIMIT ? OFFSET ?
-    `).all(like, like, like, like, like, like, like, safeLimit, safeOffset).map(rowToHistory);
+    `).all(safeProvider, safeProvider, like, like, like, like, like, like, like, safeLimit, safeOffset).map(rowToHistory);
   }
 
-  countHistory(search = ''): number {
+  countHistory(search = '', provider: HistoryProviderFilter = 'all'): number {
     const like = `%${search}%`;
+    const safeProvider = historyProviderFilter(provider);
     const row = this.db.prepare(`
       SELECT COUNT(*) AS count FROM task_history
-      WHERE (? = '%%' OR task LIKE ? OR provider LIKE ? OR provider_instance_id LIKE ? OR agent_id LIKE ? OR final_status LIKE ? OR result_summary LIKE ?)
-    `).get(like, like, like, like, like, like, like) as { count: number } | undefined;
+      WHERE (? = 'all' OR provider = ?)
+        AND (? = '%%' OR task LIKE ? OR provider LIKE ? OR provider_instance_id LIKE ? OR agent_id LIKE ? OR final_status LIKE ? OR result_summary LIKE ?)
+    `).get(safeProvider, safeProvider, like, like, like, like, like, like, like) as { count: number } | undefined;
     return row?.count ?? 0;
   }
 
@@ -445,6 +449,10 @@ function parseJson(value: unknown): unknown {
 function parseJsonObject(value: unknown): Record<string, unknown> {
   const parsed = parseJson(value);
   return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+}
+
+function historyProviderFilter(value: unknown): HistoryProviderFilter {
+  return value === 'claude' || value === 'codex' ? value : 'all';
 }
 
 function nullableString(value: unknown): string | undefined {

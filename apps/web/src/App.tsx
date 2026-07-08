@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, Check, Clock, Copy, Eye, Flame, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, Volume2, VolumeX, X } from 'lucide-react';
 import type { AgentState, AgentStatus, ApprovalRequest, DashboardSnapshot, TaskHistory, WsMessage } from '@agent-monitor/shared';
-import { connectWs, fetchSnapshot, resolveApproval } from './api';
+import { connectWs, fetchSnapshot, resolveApproval, type HistoryProviderFilter } from './api';
 
 type NotificationPermissionState = NotificationPermission | 'unsupported';
 type ThemeMode = 'day' | 'night' | 'eye';
@@ -33,6 +33,11 @@ const emptySnapshot: DashboardSnapshot = {
 };
 
 const historyPageSize = 50;
+const historyProviderOptions: Array<{ value: HistoryProviderFilter; label: string }> = [
+  { value: 'all', label: '全部' },
+  { value: 'claude', label: 'Claude' },
+  { value: 'codex', label: 'Codex' }
+];
 const themeStorageKey = 'agent-monitor-theme';
 const themeModes: ThemeMode[] = ['day', 'night', 'eye'];
 const transientApprovalMs = 5000;
@@ -56,6 +61,7 @@ export function App() {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(emptySnapshot);
   const [connected, setConnected] = useState(false);
   const [search, setSearch] = useState('');
+  const [historyProvider, setHistoryProvider] = useState<HistoryProviderFilter>('all');
   const [historyPage, setHistoryPage] = useState(0);
   const [error, setError] = useState<string>();
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>(() => notificationState());
@@ -68,7 +74,7 @@ export function App() {
   const notifiedApprovalIds = useRef(new Set<string>());
   const transientApprovalTimers = useRef(new Map<string, number>());
   const highlightedNotificationIconTimer = useRef<number | undefined>(undefined);
-  const historyQuery = useRef({ search: '', page: 0 });
+  const historyQuery = useRef<{ search: string; page: number; provider: HistoryProviderFilter }>({ search: '', page: 0, provider: 'all' });
   const visibleApprovals = useMemo(
     () => snapshot.approvals
       .filter((approval) => !hiddenApprovalIds.has(approval.id))
@@ -128,14 +134,14 @@ export function App() {
   }, [previewIcon]);
 
   useEffect(() => {
-    historyQuery.current = { search, page: historyPage };
+    historyQuery.current = { search, page: historyPage, provider: historyProvider };
     const timer = window.setTimeout(() => {
-      fetchSnapshot(search, historyPageSize, historyPage * historyPageSize)
+      fetchSnapshot(search, historyPageSize, historyPage * historyPageSize, historyProvider)
         .then((next) => setSnapshot((current) => mergeHistorySnapshot(current, next)))
         .catch(() => {});
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [search, historyPage]);
+  }, [search, historyPage, historyProvider]);
 
   useEffect(() => {
     const pendingIds = new Set(snapshot.approvals.map((approval) => approval.id));
@@ -239,10 +245,10 @@ export function App() {
       return;
     }
     if (message.type === 'history') {
-      const { search: currentSearch, page } = historyQuery.current;
+      const { search: currentSearch, page, provider } = historyQuery.current;
       maybeNotifyHistory(message.payload, highlightNotificationIcon);
-      if (currentSearch.trim()) {
-        fetchSnapshot(currentSearch, historyPageSize, page * historyPageSize)
+      if (currentSearch.trim() || provider !== 'all') {
+        fetchSnapshot(currentSearch, historyPageSize, page * historyPageSize, provider)
           .then((next) => setSnapshot((current) => mergeHistorySnapshot(current, next)))
           .catch(() => {});
       } else {
@@ -362,6 +368,22 @@ export function App() {
               <h2>卷宗</h2>
             </div>
             <div className="historyTools">
+              <div className="historyProviderFilter" role="group" aria-label="卷宗来源">
+                {historyProviderOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    className={historyProvider === option.value ? 'active' : ''}
+                    type="button"
+                    aria-pressed={historyProvider === option.value}
+                    onClick={() => {
+                      setHistoryProvider(option.value);
+                      setHistoryPage(0);
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
               <label className="searchBox">
                 <Search size={16} />
                 <input
