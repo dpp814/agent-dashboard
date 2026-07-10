@@ -1246,9 +1246,41 @@ td {
 }
 
 .historyDetailHeader h2 {
-  margin: 0 0 4px;
+  margin: 0;
   color: var(--text-strong);
   font-size: 20px;
+}
+
+.historyDetailHeading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+}
+
+.historyDetailIconButton {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  color: var(--text-muted);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.historyDetailIconButton:hover {
+  color: var(--text-strong);
+  border-color: var(--border-strong);
+}
+
+.historyDetailIconButton.copied {
+  color: var(--success-text);
+  border-color: var(--success-border);
+  background: var(--success-soft);
 }
 
 .historyDetailHeader span,
@@ -1341,31 +1373,6 @@ td {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.historyDetailActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.historyDetailActions button {
-  min-height: 34px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  color: var(--text-strong);
-  background: var(--surface-subtle);
-  cursor: pointer;
-}
-
-.historyDetailActions button.copied {
-  color: var(--success-text);
-  border-color: var(--success-border);
-  background: var(--success-soft);
 }
 
 .historyDetailSubhead {

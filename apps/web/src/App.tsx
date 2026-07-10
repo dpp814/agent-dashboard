@@ -655,7 +655,7 @@ function HistoryTable({ rows, onShowDetail, onShowSessionHistory }: {
 }
 
 function HistoryDetailDrawer({ detail, onClose }: { detail: HistoryDetail; onClose: () => void }) {
-  const [copyTarget, setCopyTarget] = useState<'debug' | 'resume'>();
+  const [debugCopied, setDebugCopied] = useState(false);
   const [resultExpanded, setResultExpanded] = useState(false);
   const row = detail.history;
   const taskText = historyTaskText(row);
@@ -673,16 +673,8 @@ function HistoryDetailDrawer({ detail, onClose }: { detail: HistoryDetail; onClo
   async function onCopyDebug() {
     if (!navigator.clipboard) return;
     await navigator.clipboard.writeText(historyDebugText(detail));
-    setCopyTarget('debug');
-    window.setTimeout(() => setCopyTarget(undefined), 1200);
-  }
-
-  async function onCopyResumeCommand() {
-    if (!resumeCommand) return;
-    const copied = await copyText(resumeCommand);
-    if (!copied) return;
-    setCopyTarget('resume');
-    window.setTimeout(() => setCopyTarget(undefined), 1200);
+    setDebugCopied(true);
+    window.setTimeout(() => setDebugCopied(false), 1200);
   }
 
   return (
@@ -690,7 +682,18 @@ function HistoryDetailDrawer({ detail, onClose }: { detail: HistoryDetail; onClo
       <aside className="historyDetailDrawer" onClick={(event) => event.stopPropagation()}>
         <header className="historyDetailHeader">
           <div>
-            <h2>卷宗详情</h2>
+            <div className="historyDetailHeading">
+              <h2>卷宗详情</h2>
+              <button
+                className={`historyDetailIconButton ${debugCopied ? 'copied' : ''}`}
+                type="button"
+                title={debugCopied ? '已复制' : '复制调试信息'}
+                aria-label={debugCopied ? '已复制' : '复制调试信息'}
+                onClick={() => void onCopyDebug()}
+              >
+                {debugCopied ? <Check size={15} /> : <Copy size={15} />}
+              </button>
+            </div>
             <span>{row.provider.toUpperCase()} · {row.providerInstanceId ?? row.agentId}</span>
           </div>
           <button className="iconPreviewClose" type="button" onClick={onClose} aria-label="关闭详情">
@@ -723,19 +726,6 @@ function HistoryDetailDrawer({ detail, onClose }: { detail: HistoryDetail; onClo
           <DetailField label="会话" value={row.providerInstanceId ?? '-'} />
           <DetailField label="Agent" value={row.agentId} />
           <DetailField label="恢复" value={resumeCommand ?? '-'} />
-        </div>
-
-        <div className="historyDetailActions">
-          <button className={copyTarget === 'debug' ? 'copied' : ''} type="button" onClick={() => void onCopyDebug()}>
-            {copyTarget === 'debug' ? <Check size={15} /> : <Copy size={15} />}
-            {copyTarget === 'debug' ? '已复制' : '复制调试信息'}
-          </button>
-          {resumeCommand ? (
-            <button className={copyTarget === 'resume' ? 'copied' : ''} type="button" onClick={() => void onCopyResumeCommand()}>
-              {copyTarget === 'resume' ? <Check size={15} /> : <Terminal size={15} />}
-              {copyTarget === 'resume' ? '已复制' : '复制恢复命令'}
-            </button>
-          ) : null}
         </div>
 
         <section className="historyDetailSection">
@@ -801,16 +791,6 @@ async function copyHistoryTask(row: TaskHistory): Promise<boolean> {
 
 async function copyHistoryResume(row: TaskHistory): Promise<boolean> {
   const text = historyResumeCommand(row);
-  if (!text || !navigator.clipboard) return false;
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function copyText(text: string): Promise<boolean> {
   if (!text || !navigator.clipboard) return false;
   try {
     await navigator.clipboard.writeText(text);
