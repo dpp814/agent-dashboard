@@ -1189,6 +1189,16 @@ td {
   border-color: var(--border-strong);
 }
 
+.historySessionButton {
+  color: var(--success-text);
+  border-color: var(--success-border);
+  background: var(--success-soft);
+}
+
+.historySessionButton:hover:not(:disabled) {
+  color: var(--text-strong);
+}
+
 .historyCopyButton.copied {
   color: var(--success-text);
   border-color: var(--success-border);

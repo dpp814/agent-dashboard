@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Check, Clock, Copy, Eye, Flame, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, Volume2, VolumeX, X } from 'lucide-react';
+import { Bell, Check, Clock, Copy, Eye, Flame, History, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, Volume2, VolumeX, X } from 'lucide-react';
 import type { AgentState, AgentStatus, ApprovalRequest, DashboardSnapshot, TaskHistory, WsMessage } from '@agent-monitor/shared';
 import { connectWs, fetchSnapshot, resolveApproval, type HistoryProviderFilter } from './api';
 
@@ -411,7 +411,14 @@ export function App() {
               </label>
             </div>
           </div>
-        <HistoryTable rows={snapshot.history} />
+        <HistoryTable
+          rows={snapshot.history}
+          onShowSessionHistory={(row) => {
+            if (!row.providerInstanceId) return;
+            setSearch(row.providerInstanceId);
+            setHistoryPage(0);
+          }}
+        />
         <div className="pager historyPager">
           <div className="pagerControls">
             <button disabled={historyPage === 0} onClick={() => setHistoryPage((page) => Math.max(0, page - 1))}>上卷</button>
@@ -523,7 +530,7 @@ function ApprovalCard({ approval, onResolve }: { approval: ApprovalRequest; onRe
   );
 }
 
-function HistoryTable({ rows }: { rows: TaskHistory[] }) {
+function HistoryTable({ rows, onShowSessionHistory }: { rows: TaskHistory[]; onShowSessionHistory: (row: TaskHistory) => void }) {
   const [copyFeedback, setCopyFeedback] = useState<{ id: number; target: 'task' | 'resume'; status: 'copied' | 'failed' }>();
   const copyFeedbackTimer = useRef<number | undefined>(undefined);
 
@@ -593,6 +600,16 @@ function HistoryTable({ rows }: { rows: TaskHistory[] }) {
                         onClick={() => void onCopyResume(row)}
                       >
                         {resumeFeedback === 'copied' ? <Check size={14} /> : <Terminal size={14} />}
+                      </button>
+                      <button
+                        className="historyCopyButton historySessionButton"
+                        type="button"
+                        title="会话历史"
+                        aria-label="会话历史"
+                        disabled={!row.providerInstanceId}
+                        onClick={() => onShowSessionHistory(row)}
+                      >
+                        <History size={14} />
                       </button>
                       <span className={`historyCopyFeedback ${taskFeedback || resumeFeedback ? 'show' : ''} ${(taskFeedback ?? resumeFeedback) === 'failed' ? 'failed' : ''}`}>
                         {(taskFeedback ?? resumeFeedback) === 'failed' ? '复制失败' : '已复制'}
