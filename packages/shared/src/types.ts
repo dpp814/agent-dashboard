@@ -78,6 +78,11 @@ export interface TaskHistory {
   resultSummary?: string;
 }
 
+export interface HistoryDetail {
+  history: TaskHistory;
+  events: AgentEvent[];
+}
+
 export interface DashboardStats {
   todayFinished: number;
   todayError: number;

@@ -23,8 +23,28 @@ export function createRouter(store: StateStore, ws: WebSocketHub) {
           url.searchParams.get('search') ?? '',
           Number(url.searchParams.get('limit') ?? 50),
           Number(url.searchParams.get('offset') ?? 0),
-          historyProviderFilter(url.searchParams.get('provider'))
+          historyProviderFilter(url.searchParams.get('provider')),
+          url.searchParams.get('sessionId') ?? ''
         ));
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname.startsWith('/api/history/')) {
+        if (!authorized(req, url)) {
+          json(res, { error: 'unauthorized' }, 401);
+          return;
+        }
+        const id = Number(url.pathname.split('/')[3]);
+        if (!Number.isInteger(id) || id < 1) {
+          json(res, { error: 'invalid history id' }, 400);
+          return;
+        }
+        const detail = store.historyDetail(id);
+        if (!detail) {
+          json(res, { error: 'history not found' }, 404);
+          return;
+        }
+        json(res, detail);
         return;
       }
 

@@ -1,4 +1,4 @@
-import type { ApprovalRequest, DashboardSnapshot, HistoryProviderFilter, WsMessage } from '@agent-monitor/shared';
+import type { ApprovalRequest, DashboardSnapshot, HistoryDetail, HistoryProviderFilter, WsMessage } from '@agent-monitor/shared';
 
 const apiBase = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8787';
 const wsBase = apiBase.replace(/^http/, 'ws');
@@ -6,19 +6,26 @@ const token = import.meta.env.VITE_AGENT_MONITOR_TOKEN ?? '';
 
 const authHeaders = token ? { authorization: `Bearer ${token}` } : undefined;
 
-export async function fetchSnapshot(search = '', limit = 50, offset = 0, provider: HistoryProviderFilter = 'all'): Promise<DashboardSnapshot> {
+export async function fetchSnapshot(search = '', limit = 50, offset = 0, provider: HistoryProviderFilter = 'all', sessionId = ''): Promise<DashboardSnapshot> {
   const params = new URLSearchParams({
     search,
     limit: String(limit),
     offset: String(offset),
     provider
   });
+  if (sessionId) params.set('sessionId', sessionId);
   const response = await fetch(`${apiBase}/api/snapshot?${params.toString()}`, { headers: authHeaders });
   if (!response.ok) throw new Error(`Snapshot failed: ${response.status}`);
   return response.json();
 }
 
-export type { HistoryProviderFilter };
+export type { HistoryDetail, HistoryProviderFilter };
+
+export async function fetchHistoryDetail(id: number): Promise<HistoryDetail> {
+  const response = await fetch(`${apiBase}/api/history/${id}`, { headers: authHeaders });
+  if (!response.ok) throw new Error(`History detail failed: ${response.status}`);
+  return response.json();
+}
 
 export async function resolveApproval(id: string, action: 'approve' | 'reject'): Promise<ApprovalRequest> {
   const response = await fetch(`${apiBase}/api/approvals/${id}/${action}`, { method: 'POST', headers: authHeaders });

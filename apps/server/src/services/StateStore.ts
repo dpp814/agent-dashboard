@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentStatus, ApprovalRequest, DashboardSnapshot, HistoryProviderFilter, TaskHistory } from '@agent-monitor/shared';
+import type { AgentEvent, AgentStatus, ApprovalRequest, DashboardSnapshot, HistoryDetail, HistoryProviderFilter, TaskHistory } from '@agent-monitor/shared';
 import { readFileSync } from 'node:fs';
 import { AppDatabase } from '../db/Database.js';
 import { newId, stableId } from '../util/ids.js';
@@ -101,7 +101,7 @@ export class StateStore {
     return { agent, approval, completed, history };
   }
 
-  snapshot(search = '', historyLimit = 50, historyOffset = 0, historyProvider: HistoryProviderFilter = 'all'): DashboardSnapshot {
+  snapshot(search = '', historyLimit = 50, historyOffset = 0, historyProvider: HistoryProviderFilter = 'all', historySessionId = ''): DashboardSnapshot {
     this.expireOldCodexApprovals();
     this.clearOrphanedApprovalAgents();
     const agents = [...this.agents.values()];
@@ -113,11 +113,16 @@ export class StateStore {
         .map((agent, _, visibleAgents) => ({ ...agent, name: displayName(agent, visibleAgents) }))
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
       approvals: this.db.listApprovals(),
-      history: this.db.listHistory(search, historyProvider, historyLimit, historyOffset),
-      historyTotal: this.db.countHistory(search, historyProvider),
+      history: this.db.listHistory(search, historyProvider, historyLimit, historyOffset, historySessionId),
+      historyTotal: this.db.countHistory(search, historyProvider, historySessionId),
       stats: this.db.countTodayHistory(...todayRange()),
       updatedAt: new Date().toISOString()
     };
+  }
+
+  historyDetail(id: number): HistoryDetail | undefined {
+    const history = this.db.getHistory(id);
+    return history ? { history, events: this.db.listEventsForHistory(history) } : undefined;
   }
 
   markProviderMissing(provider: AgentStatus['provider'], seenIds: Set<string>): AgentStatus[] {

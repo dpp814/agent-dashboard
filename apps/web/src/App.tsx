@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, Check, Clock, Copy, Eye, Flame, History, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, Volume2, VolumeX, X } from 'lucide-react';
 import type { AgentState, AgentStatus, ApprovalRequest, DashboardSnapshot, TaskHistory, WsMessage } from '@agent-monitor/shared';
-import { connectWs, fetchSnapshot, resolveApproval, type HistoryProviderFilter } from './api';
+import { connectWs, fetchHistoryDetail, fetchSnapshot, resolveApproval, type HistoryDetail, type HistoryProviderFilter } from './api';
 
 type NotificationPermissionState = NotificationPermission | 'unsupported';
 type ThemeMode = 'day' | 'night' | 'eye';
@@ -61,8 +61,10 @@ export function App() {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(emptySnapshot);
   const [connected, setConnected] = useState(false);
   const [search, setSearch] = useState('');
+  const [historySessionId, setHistorySessionId] = useState('');
   const [historyProvider, setHistoryProvider] = useState<HistoryProviderFilter>('all');
   const [historyPage, setHistoryPage] = useState(0);
+  const [historyDetail, setHistoryDetail] = useState<HistoryDetail>();
   const [error, setError] = useState<string>();
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>(() => notificationState());
   const [notificationIconUsage, setNotificationIconUsage] = useState<NotificationIconUsage[]>(() => readNotificationIconUsage());
@@ -74,7 +76,7 @@ export function App() {
   const notifiedApprovalIds = useRef(new Set<string>());
   const transientApprovalTimers = useRef(new Map<string, number>());
   const highlightedNotificationIconTimer = useRef<number | undefined>(undefined);
-  const historyQuery = useRef<{ search: string; page: number; provider: HistoryProviderFilter }>({ search: '', page: 0, provider: 'all' });
+  const historyQuery = useRef<{ search: string; page: number; provider: HistoryProviderFilter; sessionId: string }>({ search: '', page: 0, provider: 'all', sessionId: '' });
   const visibleApprovals = useMemo(
     () => snapshot.approvals
       .filter((approval) => !hiddenApprovalIds.has(approval.id))
@@ -134,14 +136,14 @@ export function App() {
   }, [previewIcon]);
 
   useEffect(() => {
-    historyQuery.current = { search, page: historyPage, provider: historyProvider };
+    historyQuery.current = { search, page: historyPage, provider: historyProvider, sessionId: historySessionId };
     const timer = window.setTimeout(() => {
-      fetchSnapshot(search, historyPageSize, historyPage * historyPageSize, historyProvider)
+      fetchSnapshot(search, historyPageSize, historyPage * historyPageSize, historyProvider, historySessionId)
         .then((next) => setSnapshot((current) => mergeHistorySnapshot(current, next)))
         .catch(() => {});
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [search, historyPage, historyProvider]);
+  }, [search, historyPage, historyProvider, historySessionId]);
 
   useEffect(() => {
     const pendingIds = new Set(snapshot.approvals.map((approval) => approval.id));
@@ -245,10 +247,10 @@ export function App() {
       return;
     }
     if (message.type === 'history') {
-      const { search: currentSearch, page, provider } = historyQuery.current;
+      const { search: currentSearch, page, provider, sessionId } = historyQuery.current;
       maybeNotifyHistory(message.payload, highlightNotificationIcon);
-      if (currentSearch.trim() || provider !== 'all') {
-        fetchSnapshot(currentSearch, historyPageSize, page * historyPageSize, provider)
+      if (currentSearch.trim() || provider !== 'all' || sessionId) {
+        fetchSnapshot(currentSearch, historyPageSize, page * historyPageSize, provider, sessionId)
           .then((next) => setSnapshot((current) => mergeHistorySnapshot(current, next)))
           .catch(() => {});
       } else {
@@ -283,6 +285,14 @@ export function App() {
         }
         : agent)
     }));
+  }
+
+  async function onShowHistoryDetail(row: TaskHistory) {
+    try {
+      setHistoryDetail(await fetchHistoryDetail(row.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   }
 
   function highlightNotificationIcon(icon: string) {
@@ -389,6 +399,7 @@ export function App() {
                 <input
                   value={search}
                   onChange={(event) => {
+                    setHistorySessionId('');
                     setSearch(event.target.value);
                     setHistoryPage(0);
                   }}
@@ -401,6 +412,7 @@ export function App() {
                     title="清空搜索"
                     aria-label="清空搜索"
                     onClick={() => {
+                      setHistorySessionId('');
                       setSearch('');
                       setHistoryPage(0);
                     }}
@@ -413,8 +425,10 @@ export function App() {
           </div>
         <HistoryTable
           rows={snapshot.history}
+          onShowDetail={onShowHistoryDetail}
           onShowSessionHistory={(row) => {
             if (!row.providerInstanceId) return;
+            setHistorySessionId(row.providerInstanceId);
             setSearch(row.providerInstanceId);
             setHistoryPage(0);
           }}
@@ -428,6 +442,7 @@ export function App() {
           <span className="pagerMeta">每页 {historyPageSize} 条，共 {snapshot.historyTotal} 条</span>
         </div>
       </section>
+      {historyDetail ? <HistoryDetailDrawer detail={historyDetail} onClose={() => setHistoryDetail(undefined)} /> : null}
     </main>
   );
 }
@@ -530,7 +545,11 @@ function ApprovalCard({ approval, onResolve }: { approval: ApprovalRequest; onRe
   );
 }
 
-function HistoryTable({ rows, onShowSessionHistory }: { rows: TaskHistory[]; onShowSessionHistory: (row: TaskHistory) => void }) {
+function HistoryTable({ rows, onShowDetail, onShowSessionHistory }: {
+  rows: TaskHistory[];
+  onShowDetail: (row: TaskHistory) => void;
+  onShowSessionHistory: (row: TaskHistory) => void;
+}) {
   const [copyFeedback, setCopyFeedback] = useState<{ id: number; target: 'task' | 'resume'; status: 'copied' | 'failed' }>();
   const copyFeedbackTimer = useRef<number | undefined>(undefined);
 
@@ -582,24 +601,33 @@ function HistoryTable({ rows, onShowSessionHistory }: { rows: TaskHistory[]; onS
                     <span>{taskText || '暂无记载'}</span>
                     <div className="historyTaskActions">
                       <button
-                        className={`historyCopyButton ${taskFeedback === 'copied' ? 'copied' : ''}`}
+                        className="historyCopyButton"
                         type="button"
-                        title={taskFeedback === 'copied' ? '已复制' : '复制事务'}
-                        aria-label={taskFeedback === 'copied' ? '已复制' : '复制事务'}
+                        title="查看详情"
+                        aria-label="查看详情"
+                        onClick={() => onShowDetail(row)}
+                      >
+                        <Eye size={14} />
+                      </button>
+                      <button
+                        className={`historyCopyButton ${taskFeedback === 'copied' ? 'copied' : ''} ${taskFeedback === 'failed' ? 'failed' : ''}`}
+                        type="button"
+                        title={copyButtonTitle(taskFeedback, '复制事务')}
+                        aria-label={copyButtonTitle(taskFeedback, '复制事务')}
                         disabled={!taskText}
                         onClick={() => void onCopyTask(row)}
                       >
-                        {taskFeedback === 'copied' ? <Check size={14} /> : <Copy size={14} />}
+                        {taskFeedback === 'copied' ? <Check size={14} /> : taskFeedback === 'failed' ? <X size={14} /> : <Copy size={14} />}
                       </button>
                       <button
-                        className={`historyCopyButton ${resumeFeedback === 'copied' ? 'copied' : ''}`}
+                        className={`historyCopyButton ${resumeFeedback === 'copied' ? 'copied' : ''} ${resumeFeedback === 'failed' ? 'failed' : ''}`}
                         type="button"
-                        title={resumeFeedback === 'copied' ? '已复制' : '复制会话'}
-                        aria-label={resumeFeedback === 'copied' ? '已复制' : '复制会话'}
+                        title={copyButtonTitle(resumeFeedback, '复制会话')}
+                        aria-label={copyButtonTitle(resumeFeedback, '复制会话')}
                         disabled={!resumeCommand}
                         onClick={() => void onCopyResume(row)}
                       >
-                        {resumeFeedback === 'copied' ? <Check size={14} /> : <Terminal size={14} />}
+                        {resumeFeedback === 'copied' ? <Check size={14} /> : resumeFeedback === 'failed' ? <X size={14} /> : <Terminal size={14} />}
                       </button>
                       <button
                         className="historyCopyButton historySessionButton"
@@ -611,9 +639,6 @@ function HistoryTable({ rows, onShowSessionHistory }: { rows: TaskHistory[]; onS
                       >
                         <History size={14} />
                       </button>
-                      <span className={`historyCopyFeedback ${taskFeedback || resumeFeedback ? 'show' : ''} ${(taskFeedback ?? resumeFeedback) === 'failed' ? 'failed' : ''}`}>
-                        {(taskFeedback ?? resumeFeedback) === 'failed' ? '复制失败' : '已复制'}
-                      </span>
                     </div>
                   </div>
                 </td>
@@ -627,6 +652,125 @@ function HistoryTable({ rows, onShowSessionHistory }: { rows: TaskHistory[]; onS
       </table>
     </div>
   );
+}
+
+function HistoryDetailDrawer({ detail, onClose }: { detail: HistoryDetail; onClose: () => void }) {
+  const [copyTarget, setCopyTarget] = useState<'debug' | 'resume'>();
+  const [resultExpanded, setResultExpanded] = useState(false);
+  const row = detail.history;
+  const taskText = historyTaskText(row);
+  const resumeCommand = historyResumeCommand(row);
+  const resultText = fullResultText(row.resultSummary);
+  const resultLong = resultText.length > 320 || resultText.split(/\r?\n/).length > 8;
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  async function onCopyDebug() {
+    if (!navigator.clipboard) return;
+    await navigator.clipboard.writeText(historyDebugText(detail));
+    setCopyTarget('debug');
+    window.setTimeout(() => setCopyTarget(undefined), 1200);
+  }
+
+  async function onCopyResumeCommand() {
+    if (!resumeCommand) return;
+    const copied = await copyText(resumeCommand);
+    if (!copied) return;
+    setCopyTarget('resume');
+    window.setTimeout(() => setCopyTarget(undefined), 1200);
+  }
+
+  return (
+    <div className="historyDetailBackdrop" role="dialog" aria-modal="true" aria-label="卷宗详情" onClick={onClose}>
+      <aside className="historyDetailDrawer" onClick={(event) => event.stopPropagation()}>
+        <header className="historyDetailHeader">
+          <div>
+            <h2>卷宗详情</h2>
+            <span>{row.provider.toUpperCase()} · {row.providerInstanceId ?? row.agentId}</span>
+          </div>
+          <button className="iconPreviewClose" type="button" onClick={onClose} aria-label="关闭详情">
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="historyDetailSection">
+          <div className="historyDetailTitle">
+            <StatusBadge status={row.finalStatus} />
+            <strong>{taskText || '暂无记载'}</strong>
+          </div>
+          {resultText ? (
+            <div className={`historyResultBlock ${resultExpanded ? 'expanded' : ''}`}>
+              <span>结果摘要</span>
+              <p>{resultText}</p>
+              {resultLong ? (
+                <button type="button" onClick={() => setResultExpanded((current) => !current)}>
+                  {resultExpanded ? '收起' : '展开全文'}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="historyDetailGrid">
+          <DetailField label="归档" value={row.endedAt ? formatDateTime(row.endedAt) : '-'} />
+          <DetailField label="开始" value={row.startedAt ? formatDateTime(row.startedAt) : '-'} />
+          <DetailField label="耗时" value={row.durationMs === undefined ? '-' : formatMs(row.durationMs)} />
+          <DetailField label="会话" value={row.providerInstanceId ?? '-'} />
+          <DetailField label="Agent" value={row.agentId} />
+          <DetailField label="恢复" value={resumeCommand ?? '-'} />
+        </div>
+
+        <div className="historyDetailActions">
+          <button className={copyTarget === 'debug' ? 'copied' : ''} type="button" onClick={() => void onCopyDebug()}>
+            {copyTarget === 'debug' ? <Check size={15} /> : <Copy size={15} />}
+            {copyTarget === 'debug' ? '已复制' : '复制调试信息'}
+          </button>
+          {resumeCommand ? (
+            <button className={copyTarget === 'resume' ? 'copied' : ''} type="button" onClick={() => void onCopyResumeCommand()}>
+              {copyTarget === 'resume' ? <Check size={15} /> : <Terminal size={15} />}
+              {copyTarget === 'resume' ? '已复制' : '复制恢复命令'}
+            </button>
+          ) : null}
+        </div>
+
+        <section className="historyDetailSection">
+          <div className="historyDetailSubhead">
+            <h3>事件时间线</h3>
+            <span>{detail.events.length}</span>
+          </div>
+          <div className="historyEventList">
+            {detail.events.length ? detail.events.map((event) => (
+              <article className="historyEventItem" key={event.id ?? `${event.type}-${event.ts}`}>
+                <span>{formatDateTime(event.ts)}</span>
+                <strong>{eventTypeLabel(event.type)}</strong>
+                <p>{eventDisplayText(event) || event.providerInstanceId}</p>
+              </article>
+            )) : <EmptyState text="暂无事件" compact />}
+          </div>
+        </section>
+      </aside>
+    </div>
+  );
+}
+
+function DetailField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="historyDetailField">
+      <span>{label}</span>
+      <strong title={value}>{value}</strong>
+    </div>
+  );
+}
+
+function copyButtonTitle(status: 'copied' | 'failed' | undefined, fallback: string): string {
+  if (status === 'copied') return '已复制';
+  if (status === 'failed') return '复制失败';
+  return fallback;
 }
 
 function historyTaskText(row: TaskHistory): string {
@@ -664,6 +808,77 @@ async function copyHistoryResume(row: TaskHistory): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function copyText(text: string): Promise<boolean> {
+  if (!text || !navigator.clipboard) return false;
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function historyDebugText(detail: HistoryDetail): string {
+  const row = detail.history;
+  return [
+    `provider: ${row.provider}`,
+    `sessionId: ${row.providerInstanceId ?? ''}`,
+    `agentId: ${row.agentId}`,
+    `status: ${row.finalStatus}`,
+    `startedAt: ${row.startedAt ?? ''}`,
+    `endedAt: ${row.endedAt ?? ''}`,
+    `duration: ${row.durationMs === undefined ? '' : formatMs(row.durationMs)}`,
+    `resume: ${historyResumeCommand(row) ?? ''}`,
+    '',
+    `task: ${historyTaskText(row)}`,
+    `result: ${summarizeResult(row.resultSummary)}`,
+    '',
+    'events:',
+    ...detail.events.map((event) => `- ${event.ts} ${event.type} ${eventSummary(event.payload)}`)
+  ].join('\n');
+}
+
+function eventTypeLabel(type: string): string {
+  switch (type) {
+    case 'started': return '开始';
+    case 'tool_started': return '调用工具';
+    case 'tool_finished': return '工具完成';
+    case 'approval_requested': return '请求授权';
+    case 'input_requested': return '等待输入';
+    case 'finished': return '完成';
+    case 'error': return '异常';
+    case 'heartbeat': return '心跳';
+    case 'discovered': return '发现';
+    default: return type;
+  }
+}
+
+function eventDisplayText(event: { type: string; payload: unknown }): string {
+  if (event.type === 'finished') return '见上方结果摘要';
+  if (event.type === 'error') return eventSummary(event.payload) || '见上方结果摘要';
+  return eventSummary(event.payload);
+}
+
+function eventSummary(payload: unknown): string {
+  const row = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
+  const input = row.tool_input && typeof row.tool_input === 'object' ? row.tool_input as Record<string, unknown> : {};
+  return String(
+    row.tool_name ??
+    row.toolName ??
+    row.name ??
+    row.command ??
+    row.filePath ??
+    input.command ??
+    input.file_path ??
+    input.path ??
+    row.message ??
+    row.error ??
+    row.result ??
+    row.last_assistant_message ??
+    ''
+  );
 }
 
 function NotificationIconUsageList({ icons, highlightedPath, onPreview }: {
@@ -1064,6 +1279,10 @@ function formatMs(ms: number) {
 
 function summarizeResult(value?: string) {
   return value?.split(/\r?\n/).find((line) => line.trim())?.trim();
+}
+
+function fullResultText(value?: string) {
+  return value?.trim() ?? '';
 }
 
 function maybeNotify(agent: AgentStatus, onClick?: (icon: string) => void) {

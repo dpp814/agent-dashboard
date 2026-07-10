@@ -72,6 +72,12 @@ export class AppDatabase {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_task_history_agent_ended
       ON task_history(agent_id, ended_at)
       WHERE ended_at IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_task_history_provider_ended
+      ON task_history(provider, ended_at);
+      CREATE INDEX IF NOT EXISTS idx_task_history_session_ended
+      ON task_history(provider_instance_id, ended_at);
+      CREATE INDEX IF NOT EXISTS idx_agent_events_agent_type_ts
+      ON agent_events(agent_id, type, ts);
     `);
     this.backfillZeroDurationHistory();
     this.backfillMissingCompletionHistory();
@@ -247,7 +253,7 @@ export class AppDatabase {
     return approvals.map((approval) => approval.agentId);
   }
 
-  listHistory(search = '', provider: HistoryProviderFilter = 'all', limit = 50, offset = 0): TaskHistory[] {
+  listHistory(search = '', provider: HistoryProviderFilter = 'all', limit = 50, offset = 0, sessionId = ''): TaskHistory[] {
     const like = `%${search}%`;
     const safeProvider = historyProviderFilter(provider);
     const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
@@ -255,21 +261,66 @@ export class AppDatabase {
     return this.db.prepare(`
       SELECT * FROM task_history
       WHERE (? = 'all' OR provider = ?)
+        AND (? = '' OR provider_instance_id = ?)
         AND (? = '%%' OR task LIKE ? OR provider LIKE ? OR provider_instance_id LIKE ? OR agent_id LIKE ? OR final_status LIKE ? OR result_summary LIKE ?)
       ORDER BY COALESCE(ended_at, started_at) DESC
       LIMIT ? OFFSET ?
-    `).all(safeProvider, safeProvider, like, like, like, like, like, like, like, safeLimit, safeOffset).map(rowToHistory);
+    `).all(
+      safeProvider,
+      safeProvider,
+      sessionId,
+      sessionId,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      safeLimit,
+      safeOffset
+    ).map(rowToHistory);
   }
 
-  countHistory(search = '', provider: HistoryProviderFilter = 'all'): number {
+  countHistory(search = '', provider: HistoryProviderFilter = 'all', sessionId = ''): number {
     const like = `%${search}%`;
     const safeProvider = historyProviderFilter(provider);
     const row = this.db.prepare(`
       SELECT COUNT(*) AS count FROM task_history
       WHERE (? = 'all' OR provider = ?)
+        AND (? = '' OR provider_instance_id = ?)
         AND (? = '%%' OR task LIKE ? OR provider LIKE ? OR provider_instance_id LIKE ? OR agent_id LIKE ? OR final_status LIKE ? OR result_summary LIKE ?)
-    `).get(safeProvider, safeProvider, like, like, like, like, like, like, like) as { count: number } | undefined;
+    `).get(safeProvider, safeProvider, sessionId, sessionId, like, like, like, like, like, like, like) as { count: number } | undefined;
     return row?.count ?? 0;
+  }
+
+  getHistory(id: number): TaskHistory | undefined {
+    const row = this.db.prepare('SELECT * FROM task_history WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    return row ? rowToHistory(row) : undefined;
+  }
+
+  listEventsForHistory(history: TaskHistory, limit = 80): AgentEvent[] {
+    const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
+    const startedAt = history.startedAt ?? '';
+    const endedAt = history.endedAt ?? '';
+    return this.db.prepare(`
+      SELECT * FROM agent_events
+      WHERE agent_id = ?
+        AND (? = '' OR provider_instance_id = ?)
+        AND (? = '' OR ts >= ?)
+        AND (? = '' OR ts <= ?)
+      ORDER BY ts ASC, id ASC
+      LIMIT ?
+    `).all(
+      history.agentId,
+      history.providerInstanceId ?? '',
+      history.providerInstanceId ?? '',
+      startedAt,
+      startedAt,
+      endedAt,
+      endedAt,
+      safeLimit
+    ).map(rowToEvent);
   }
 
   countTodayHistory(sinceIso: string, beforeIso: string): DashboardStats {
@@ -431,6 +482,36 @@ function rowToHistory(row: Record<string, unknown>): TaskHistory {
     finalStatus: row.final_status as TaskHistory['finalStatus'],
     resultSummary: nullableString(row.result_summary)
   };
+}
+
+function rowToEvent(row: Record<string, unknown>): AgentEvent {
+  return {
+    id: Number(row.id),
+    agentId: String(row.agent_id),
+    provider: row.provider as AgentEvent['provider'],
+    providerInstanceId: String(row.provider_instance_id),
+    type: row.type as AgentEvent['type'],
+    ts: String(row.ts),
+    payload: compactEventPayload(parseJsonObject(row.payload_json))
+  };
+}
+
+function compactEventPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const input = parseJsonObject(payload.tool_input ?? payload.toolInput);
+  return {
+    hookEventName: nullableString(payload.hook_event_name ?? payload.hookEventName),
+    toolName: nullableString(payload.tool_name ?? payload.toolName ?? payload.name),
+    command: nullableString(input.command),
+    filePath: nullableString(input.file_path ?? input.filePath ?? input.path),
+    cwd: nullableString(payload.cwd),
+    message: truncate(nullableString(payload.message), 240),
+    error: truncate(nullableString(payload.error), 240),
+    result: truncate(nullableString(payload.result ?? payload.last_assistant_message ?? payload.lastAssistantMessage), 1200)
+  };
+}
+
+function truncate(value: string | undefined, max: number): string | undefined {
+  return value && value.length > max ? `${value.slice(0, max)}...` : value;
 }
 
 function isInvalidApproval(approval: ApprovalRequest): boolean {

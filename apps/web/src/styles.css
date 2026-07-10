@@ -1205,30 +1205,212 @@ td {
   background: var(--success-soft);
 }
 
+.historyCopyButton.failed {
+  color: var(--danger-text);
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+}
+
 .historyCopyButton:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
 
-.historyCopyFeedback {
-  width: 0;
-  overflow: hidden;
-  color: var(--success-text);
+.historyDetailBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: flex-end;
+  background: rgb(0 0 0 / 0.28);
+}
+
+.historyDetailDrawer {
+  width: min(560px, 100vw);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  overflow: auto;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: -14px 0 38px rgb(0 0 0 / 0.18);
+}
+
+.historyDetailHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.historyDetailHeader h2 {
+  margin: 0 0 4px;
+  color: var(--text-strong);
+  font-size: 20px;
+}
+
+.historyDetailHeader span,
+.historyDetailField span,
+.historyEventItem span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.historyDetailSection {
+  display: grid;
+  gap: 10px;
+}
+
+.historyDetailTitle {
+  display: grid;
+  gap: 8px;
+}
+
+.historyDetailTitle strong {
+  color: var(--text-strong);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.historyDetailSection p {
+  margin: 0;
+  color: var(--text-body);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.historyResultBlock {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.historyResultBlock span {
+  color: var(--text-muted);
   font-size: 12px;
   font-weight: 700;
-  line-height: 28px;
-  opacity: 0;
+}
+
+.historyResultBlock p {
+  max-height: 180px;
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+
+.historyResultBlock.expanded p {
+  max-height: none;
+}
+
+.historyResultBlock button {
+  justify-self: flex-start;
+  min-height: 26px;
+  padding: 0;
+  border: 0;
+  color: var(--info-text);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.historyDetailGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.historyDetailField {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.historyDetailField strong {
+  min-width: 0;
+  color: var(--text-strong);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  transition: opacity 120ms ease;
 }
 
-.historyCopyFeedback.show {
-  width: auto;
-  opacity: 1;
+.historyDetailActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.historyCopyFeedback.failed {
-  color: var(--danger-text);
+.historyDetailActions button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--text-strong);
+  background: var(--surface-subtle);
+  cursor: pointer;
+}
+
+.historyDetailActions button.copied {
+  color: var(--success-text);
+  border-color: var(--success-border);
+  background: var(--success-soft);
+}
+
+.historyDetailSubhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.historyDetailSubhead h3 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 15px;
+}
+
+.historyDetailSubhead span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.historyEventList {
+  display: grid;
+  gap: 8px;
+}
+
+.historyEventItem {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.historyEventItem strong {
+  color: var(--text-strong);
+  font-size: 13px;
+}
+
+.historyEventItem p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .empty {
