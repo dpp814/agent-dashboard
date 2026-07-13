@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Bell, Check, Clock, Copy, Eye, Flame, History, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, Volume2, VolumeX, X } from 'lucide-react';
 import type { AgentState, AgentStatus, ApprovalRequest, DashboardSnapshot, TaskHistory, WsMessage } from '@agent-monitor/shared';
 import { connectWs, fetchHistoryDetail, fetchSnapshot, resolveApproval, type HistoryDetail, type HistoryProviderFilter } from './api';
@@ -657,11 +657,21 @@ function HistoryTable({ rows, onShowDetail, onShowSessionHistory }: {
 function HistoryDetailDrawer({ detail, onClose }: { detail: HistoryDetail; onClose: () => void }) {
   const [debugCopied, setDebugCopied] = useState(false);
   const [resultExpanded, setResultExpanded] = useState(false);
+  const [resultLong, setResultLong] = useState(false);
+  const resultRef = useRef<HTMLParagraphElement>(null);
   const row = detail.history;
   const taskText = historyTaskText(row);
   const resumeCommand = historyResumeCommand(row);
   const resultText = fullResultText(row.resultSummary);
-  const resultLong = resultText.length > 320 || resultText.split(/\r?\n/).length > 8;
+  useLayoutEffect(() => {
+    const result = resultRef.current;
+    if (!result || resultExpanded) return;
+    const updateOverflow = () => setResultLong(result.scrollHeight > result.clientHeight + 1);
+    updateOverflow();
+    const observer = new ResizeObserver(updateOverflow);
+    observer.observe(result);
+    return () => observer.disconnect();
+  }, [resultText, resultExpanded]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -709,7 +719,7 @@ function HistoryDetailDrawer({ detail, onClose }: { detail: HistoryDetail; onClo
           {resultText ? (
             <div className={`historyResultBlock ${resultExpanded ? 'expanded' : ''}`}>
               <span>结果摘要</span>
-              <p>{resultText}</p>
+              <p ref={resultRef}>{resultText}</p>
               {resultLong ? (
                 <button type="button" onClick={() => setResultExpanded((current) => !current)}>
                   {resultExpanded ? '收起' : '展开全文'}
