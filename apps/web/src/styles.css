@@ -1676,6 +1676,39 @@ td {
   cursor: pointer;
 }
 
+.historyResultHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.historyResultBlock .historyResultCopyButton {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  color: var(--text-muted);
+  background: var(--surface);
+}
+
+.historyResultBlock .historyResultCopyButton:hover {
+  color: var(--text-strong);
+  border-color: var(--border-strong);
+}
+
+.historyResultBlock .historyResultCopyButton.copied {
+  color: var(--success-text);
+  border-color: var(--success-border);
+  background: var(--success-soft);
+}
+
 .historyDetailGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

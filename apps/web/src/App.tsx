@@ -784,6 +784,7 @@ function HistoryDetailDrawer({ detail, onClose, onDeleteSession }: {
   onDeleteSession: (sessionId: string) => Promise<boolean>;
 }) {
   const [debugCopied, setDebugCopied] = useState(false);
+  const [resultCopied, setResultCopied] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [resultExpanded, setResultExpanded] = useState(false);
@@ -819,6 +820,13 @@ function HistoryDetailDrawer({ detail, onClose, onDeleteSession }: {
     await navigator.clipboard.writeText(historyDebugText(detail));
     setDebugCopied(true);
     window.setTimeout(() => setDebugCopied(false), 1200);
+  }
+
+  async function onCopyResult() {
+    if (!navigator.clipboard || !resultText) return;
+    await navigator.clipboard.writeText(resultText);
+    setResultCopied(true);
+    window.setTimeout(() => setResultCopied(false), 1200);
   }
 
   async function onDelete() {
@@ -873,7 +881,18 @@ function HistoryDetailDrawer({ detail, onClose, onDeleteSession }: {
           </div>
           {resultText ? (
             <div className={`historyResultBlock ${resultExpanded ? 'expanded' : ''}`}>
-              <span>结果摘要</span>
+              <div className="historyResultHeader">
+                <span>结果摘要</span>
+                <button
+                  className={`historyResultCopyButton ${resultCopied ? 'copied' : ''}`}
+                  type="button"
+                  title={resultCopied ? '已复制' : '复制结果摘要'}
+                  aria-label={resultCopied ? '已复制' : '复制结果摘要'}
+                  onClick={() => void onCopyResult()}
+                >
+                  {resultCopied ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+              </div>
               <p ref={resultRef}>{resultText}</p>
               {resultLong ? (
                 <button type="button" onClick={() => setResultExpanded((current) => !current)}>
