@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Check, ChevronDown, Clock, Copy, Eye, Flame, History, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, Trash2, Volume2, VolumeX, X } from 'lucide-react';
+import { Bell, Check, ChevronDown, Clock, Copy, Eye, Flame, History, Layers3, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, Trash2, Volume2, VolumeX, X } from 'lucide-react';
 import type { AgentState, AgentStatus, ApprovalRequest, DashboardSnapshot, TaskHistory, WsMessage } from '@agent-monitor/shared';
 import { connectWs, deleteHistorySession, fetchHistoryDetail, fetchSnapshot, resolveApproval, type HistoryDetail, type HistoryProviderFilter } from './api';
 
@@ -456,7 +456,7 @@ export function App() {
                 {historyProviderOptions.map((option) => (
                   <button
                     key={option.value}
-                    className={historyProvider === option.value ? 'active' : ''}
+                    className={`${historyProvider === option.value ? 'active' : ''} provider-${option.value}`}
                     type="button"
                     aria-pressed={historyProvider === option.value}
                     onClick={() => {
@@ -464,7 +464,8 @@ export function App() {
                       setHistoryPage(0);
                     }}
                   >
-                    {option.label}
+                    <HistoryProviderIcon provider={option.value} />
+                    <span>{option.label}</span>
                   </button>
                 ))}
               </div>
@@ -696,7 +697,7 @@ function HistoryTable({ rows, onShowDetail, onShowSessionHistory }: {
             const resumeFeedback = copyFeedback?.id === row.id && copyFeedback.target === 'resume' ? copyFeedback.status : undefined;
             return (
               <tr key={row.id}>
-                <td>{row.provider.toUpperCase()}</td>
+                <td><HistoryProviderIdentity provider={row.provider} /></td>
                 <td className="historyTaskCell" title={taskText}>
                   <div className="historyTaskContent">
                     <span>{taskText || '暂无记载'}</span>
@@ -753,6 +754,28 @@ function HistoryTable({ rows, onShowDetail, onShowSessionHistory }: {
       </table>
     </div>
   );
+}
+
+function HistoryProviderIdentity({ provider }: { provider: TaskHistory['provider'] }) {
+  const label = provider === 'claude' ? 'Claude' : provider === 'codex' ? 'Codex' : provider;
+  return (
+    <span className={`historyProviderIdentity provider-${provider}`} title={label} aria-label={label}>
+      <span className="historyProviderMark" aria-hidden="true">
+        <HistoryProviderIcon provider={provider} size={15} />
+      </span>
+    </span>
+  );
+}
+
+function HistoryProviderIcon({ provider, size = 14 }: {
+  provider: TaskHistory['provider'] | HistoryProviderFilter;
+  size?: number;
+}) {
+  if (provider === 'claude' || provider === 'codex') {
+    return <span className={`historyProviderGlyph brand-${provider}`} style={{ width: size, height: size }} aria-hidden="true" />;
+  }
+  if (provider === 'all') return <Layers3 size={size} />;
+  return <Terminal size={size} />;
 }
 
 function HistoryDetailDrawer({ detail, onClose, onDeleteSession }: {

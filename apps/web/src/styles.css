@@ -1042,12 +1042,50 @@ input {
 .historyProviderFilter button {
   height: 28px;
   min-width: 58px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   padding: 0 10px;
   border: 0;
   border-radius: 6px;
   color: var(--text-muted);
   background: transparent;
   cursor: pointer;
+}
+
+.provider-all {
+  --provider-color: var(--text-muted);
+}
+
+.provider-claude {
+  --provider-color: #cc6847;
+}
+
+.provider-codex {
+  --provider-color: var(--success-text);
+}
+
+.historyProviderFilter button svg {
+  flex: none;
+  color: var(--provider-color);
+}
+
+.historyProviderGlyph {
+  flex: none;
+  display: inline-block;
+  background: var(--provider-color);
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+.historyProviderGlyph.brand-claude {
+  mask-image: url('/provider-icon/claude.svg');
+}
+
+.historyProviderGlyph.brand-codex {
+  mask-image: url('/provider-icon/openai.svg');
 }
 
 .historyProviderFilter button.active {
@@ -1202,7 +1240,7 @@ table {
 }
 
 .historyAgentCol {
-  width: 90px;
+  width: 64px;
 }
 
 .historyStatusCol {
@@ -1233,6 +1271,24 @@ th {
 
 td {
   color: var(--text-body);
+}
+
+.historyProviderIdentity {
+  display: inline-flex;
+  align-items: center;
+}
+
+.historyProviderMark {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--provider-color) 24%, var(--border-soft));
+  border-radius: 8px;
+  color: var(--provider-color);
+  background: color-mix(in srgb, var(--provider-color) 10%, var(--surface));
 }
 
 .historyTaskCell {
