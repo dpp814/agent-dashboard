@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Check, Clock, Copy, Eye, Flame, History, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, Trash2, Volume2, VolumeX, X } from 'lucide-react';
+import { Bell, Check, ChevronDown, Clock, Copy, Eye, Flame, History, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, Trash2, Volume2, VolumeX, X } from 'lucide-react';
 import type { AgentState, AgentStatus, ApprovalRequest, DashboardSnapshot, TaskHistory, WsMessage } from '@agent-monitor/shared';
 import { connectWs, deleteHistorySession, fetchHistoryDetail, fetchSnapshot, resolveApproval, type HistoryDetail, type HistoryProviderFilter } from './api';
 
@@ -44,6 +44,7 @@ const transientApprovalMs = 5000;
 const notifiedAgentEventKeys = new Set<string>();
 const notificationIconUsageStorageKey = 'agent-monitor-notification-icon-usage';
 const notificationIconUsageEvent = 'agent-monitor-notification-icon-usage-change';
+const iconUsageExpandedStorageKey = 'agent-monitor-icon-usage-expanded';
 const notificationSoundStorageKey = 'agent-monitor-notification-sound';
 let notificationAudioContext: AudioContext | undefined;
 const cultivationRanks = ['炼气', '筑基', '结丹', '元婴', '化神', '炼虚', '合体', '大乘', '真仙', '金仙', '太乙', '大罗', '道祖'];
@@ -68,6 +69,7 @@ export function App() {
   const [error, setError] = useState<string>();
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>(() => notificationState());
   const [notificationIconUsage, setNotificationIconUsage] = useState<NotificationIconUsage[]>(() => readNotificationIconUsage());
+  const [iconUsageExpanded, setIconUsageExpanded] = useState(() => initialIconUsageExpanded());
   const [highlightedNotificationIcon, setHighlightedNotificationIcon] = useState<string>();
   const [previewIcon, setPreviewIcon] = useState<NotificationIconUsage>();
   const [theme, setTheme] = useState<ThemeMode>(() => initialTheme());
@@ -102,6 +104,10 @@ export function App() {
   useEffect(() => {
     window.localStorage.setItem(notificationSoundStorageKey, notificationSoundEnabled ? '1' : '0');
   }, [notificationSoundEnabled]);
+
+  useEffect(() => {
+    window.localStorage.setItem(iconUsageExpandedStorageKey, iconUsageExpanded ? '1' : '0');
+  }, [iconUsageExpanded]);
 
   useEffect(() => {
     if (!notificationSoundEnabled) return;
@@ -388,14 +394,33 @@ export function App() {
         </aside>
       </section>
 
-      <section className="iconUsagePanel" id="notification-icon-usage">
+      <section className={`iconUsagePanel ${iconUsageExpanded ? '' : 'isCollapsed'}`} id="notification-icon-usage">
         <div className="sectionHeader">
           <div className="sectionTitle">
             <h2>道友图鉴</h2>
             <span>{notificationIconUsage.reduce((total, icon) => total + icon.count, 0)}</span>
           </div>
+          <button
+            className={`iconUsageCollapseButton ${iconUsageExpanded ? 'isExpanded' : ''}`}
+            type="button"
+            aria-expanded={iconUsageExpanded}
+            aria-controls="notification-icon-usage-content"
+            onClick={() => setIconUsageExpanded((current) => !current)}
+          >
+            <span>{iconUsageExpanded ? '收起' : '展开'}</span>
+            <ChevronDown size={16} />
+          </button>
         </div>
-        <NotificationIconUsageList icons={notificationIconUsage} highlightedPath={highlightedNotificationIcon} onPreview={setPreviewIcon} />
+        <div
+          className={`iconUsageCollapseContent ${iconUsageExpanded ? 'isExpanded' : ''}`}
+          id="notification-icon-usage-content"
+          aria-hidden={!iconUsageExpanded}
+          inert={!iconUsageExpanded ? true : undefined}
+        >
+          <div className="iconUsageCollapseInner">
+            <NotificationIconUsageList icons={notificationIconUsage} highlightedPath={highlightedNotificationIcon} onPreview={setPreviewIcon} />
+          </div>
+        </div>
       </section>
 
       {previewIcon ? <NotificationIconPreview icon={previewIcon} onClose={() => setPreviewIcon(undefined)} /> : null}
@@ -1548,6 +1573,10 @@ function notificationTitle(permission: NotificationPermissionState): string {
 
 function initialNotificationSoundEnabled(): boolean {
   return window.localStorage.getItem(notificationSoundStorageKey) !== '0';
+}
+
+function initialIconUsageExpanded(): boolean {
+  return window.localStorage.getItem(iconUsageExpandedStorageKey) !== '0';
 }
 
 function isNotificationSoundEnabled(): boolean {

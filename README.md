@@ -8,7 +8,7 @@
 - 实时状态看板：修行、候令、待言、圆满、异象、坐化
 - 授令阁：集中展示授权请求，Claude 可在 Web UI 里准行/驳回
 - 卷宗：保存近期任务历史，支持搜索、分页、会话精确筛选、详情查看、恢复命令复制和会话删除
-- 道友图鉴：统计通知头像使用次数，并按修仙境界升级
+- 道友图鉴：统计通知头像使用次数，按修仙境界升级，并支持折叠展示
 - 浏览器通知：任务圆满、任务异常、等待输入、待授权，支持传音/静默提示音切换
 - 三套主题：宣纸、夜墨、竹青
 - SQLite 本地存储
@@ -241,6 +241,8 @@ Codex entries auto-expire after `AGENT_MONITOR_CODEX_APPROVAL_TTL_MS`, or resolv
 ### 道友图鉴
 
 Browser notifications randomly use one of the bundled avatars. The selected avatar gets one use count, stored in browser `localStorage`.
+
+The atlas can be collapsed from its header. The display preference is stored locally.
 
 The top-right `传音/静默` control toggles a short notification sound for browser notification cards.
 

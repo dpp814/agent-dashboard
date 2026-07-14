@@ -384,6 +384,36 @@ input {
   font-weight: 700;
 }
 
+.iconUsageCollapseButton {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 0 9px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  color: var(--text-muted);
+  background: var(--surface-muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.iconUsageCollapseButton:hover {
+  color: var(--text-strong);
+  border-color: var(--border-strong);
+}
+
+.iconUsageCollapseButton svg {
+  transition: transform 180ms ease;
+}
+
+.iconUsageCollapseButton.isExpanded svg {
+  transform: rotate(180deg);
+}
+
 .agentGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
@@ -616,6 +646,29 @@ input {
 .historyPanel {
   margin-top: 14px;
   min-width: 0;
+}
+
+.iconUsagePanel.isCollapsed .sectionHeader {
+  border-bottom-color: transparent;
+}
+
+.iconUsageCollapseContent {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+  transition: grid-template-rows 220ms ease, opacity 160ms ease;
+}
+
+.iconUsageCollapseContent.isExpanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.iconUsageCollapseInner {
+  min-height: 0;
+  overflow: hidden;
 }
 
 .iconUsageGrid {
@@ -1670,6 +1723,11 @@ td {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .iconUsageCollapseButton svg,
+  .iconUsageCollapseContent {
+    transition: none;
+  }
+
   .historyDeleteConfirmBackdrop,
   .historyDeleteConfirmDialog {
     animation: none;
