@@ -125,6 +125,14 @@ export class StateStore {
     return history ? { history, events: this.db.listEventsForHistory(history) } : undefined;
   }
 
+  deleteHistory(id: number): { deletedHistory: number; deletedEvents: number } {
+    return this.db.deleteHistory(id);
+  }
+
+  deleteHistorySession(sessionId: string): { deletedHistory: number; deletedEvents: number } {
+    return this.db.deleteHistorySession(sessionId);
+  }
+
   markProviderMissing(provider: AgentStatus['provider'], seenIds: Set<string>): AgentStatus[] {
     const now = new Date().toISOString();
     const changed: AgentStatus[] = [];

@@ -299,6 +299,44 @@ export class AppDatabase {
     return row ? rowToHistory(row) : undefined;
   }
 
+  deleteHistory(id: number): { deletedHistory: number; deletedEvents: number } {
+    const history = this.getHistory(id);
+    if (!history) return { deletedHistory: 0, deletedEvents: 0 };
+
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const deletedHistory = Number(this.db.prepare('DELETE FROM task_history WHERE id = ?').run(id).changes);
+      const deletedEvents = history.endedAt
+        ? Number(this.db.prepare(`
+          DELETE FROM agent_events
+          WHERE agent_id = ? AND ts = ? AND type IN ('finished', 'error')
+        `).run(history.agentId, history.endedAt).changes)
+        : 0;
+      this.db.exec('COMMIT');
+      return { deletedHistory, deletedEvents };
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  deleteHistorySession(sessionId: string): { deletedHistory: number; deletedEvents: number } {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const deletedHistory = Number(this.db.prepare(`
+        DELETE FROM task_history WHERE provider_instance_id = ?
+      `).run(sessionId).changes);
+      const deletedEvents = Number(this.db.prepare(`
+        DELETE FROM agent_events WHERE provider_instance_id = ?
+      `).run(sessionId).changes);
+      this.db.exec('COMMIT');
+      return { deletedHistory, deletedEvents };
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   listEventsForHistory(history: TaskHistory, limit = 80): AgentEvent[] {
     const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
     const startedAt = history.startedAt ?? '';

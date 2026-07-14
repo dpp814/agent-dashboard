@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Check, Clock, Copy, Eye, Flame, History, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, Volume2, VolumeX, X } from 'lucide-react';
+import { Bell, Check, Clock, Copy, Eye, Flame, History, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, Trash2, Volume2, VolumeX, X } from 'lucide-react';
 import type { AgentState, AgentStatus, ApprovalRequest, DashboardSnapshot, TaskHistory, WsMessage } from '@agent-monitor/shared';
-import { connectWs, fetchHistoryDetail, fetchSnapshot, resolveApproval, type HistoryDetail, type HistoryProviderFilter } from './api';
+import { connectWs, deleteHistorySession, fetchHistoryDetail, fetchSnapshot, resolveApproval, type HistoryDetail, type HistoryProviderFilter } from './api';
 
 type NotificationPermissionState = NotificationPermission | 'unsupported';
 type ThemeMode = 'day' | 'night' | 'eye';
@@ -295,6 +295,34 @@ export function App() {
     }
   }
 
+  async function onDeleteHistorySession(sessionId: string): Promise<boolean> {
+    try {
+      await deleteHistorySession(sessionId);
+      const query = historyQuery.current;
+      const clearSessionFilter = query.sessionId === sessionId;
+      const nextSearch = clearSessionFilter ? '' : query.search;
+      const nextSessionId = clearSessionFilter ? '' : query.sessionId;
+      let nextPage = clearSessionFilter ? 0 : query.page;
+      let next = await fetchSnapshot(nextSearch, historyPageSize, nextPage * historyPageSize, query.provider, nextSessionId);
+      const lastPage = Math.max(0, Math.ceil(next.historyTotal / historyPageSize) - 1);
+      if (nextPage > lastPage) {
+        nextPage = lastPage;
+        next = await fetchSnapshot(nextSearch, historyPageSize, nextPage * historyPageSize, query.provider, nextSessionId);
+      }
+      if (clearSessionFilter) {
+        setSearch('');
+        setHistorySessionId('');
+      }
+      setHistoryPage(nextPage);
+      setSnapshot(normalizeSnapshot(next));
+      setHistoryDetail(undefined);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  }
+
   function highlightNotificationIcon(icon: string) {
     if (highlightedNotificationIconTimer.current) window.clearTimeout(highlightedNotificationIconTimer.current);
     setHighlightedNotificationIcon(undefined);
@@ -442,7 +470,13 @@ export function App() {
           <span className="pagerMeta">每页 {historyPageSize} 条，共 {snapshot.historyTotal} 条</span>
         </div>
       </section>
-      {historyDetail ? <HistoryDetailDrawer detail={historyDetail} onClose={() => setHistoryDetail(undefined)} /> : null}
+      {historyDetail ? (
+        <HistoryDetailDrawer
+          detail={historyDetail}
+          onClose={() => setHistoryDetail(undefined)}
+          onDeleteSession={onDeleteHistorySession}
+        />
+      ) : null}
     </main>
   );
 }
@@ -654,11 +688,18 @@ function HistoryTable({ rows, onShowDetail, onShowSessionHistory }: {
   );
 }
 
-function HistoryDetailDrawer({ detail, onClose }: { detail: HistoryDetail; onClose: () => void }) {
+function HistoryDetailDrawer({ detail, onClose, onDeleteSession }: {
+  detail: HistoryDetail;
+  onClose: () => void;
+  onDeleteSession: (sessionId: string) => Promise<boolean>;
+}) {
   const [debugCopied, setDebugCopied] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [resultExpanded, setResultExpanded] = useState(false);
   const [resultLong, setResultLong] = useState(false);
   const resultRef = useRef<HTMLParagraphElement>(null);
+  const confirmDeleteButtonRef = useRef<HTMLButtonElement>(null);
   const row = detail.history;
   const taskText = historyTaskText(row);
   const resumeCommand = historyResumeCommand(row);
@@ -673,12 +714,15 @@ function HistoryDetailDrawer({ detail, onClose }: { detail: HistoryDetail; onClo
     return () => observer.disconnect();
   }, [resultText, resultExpanded]);
   useEffect(() => {
+    if (deleteConfirmOpen) confirmDeleteButtonRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Escape' || deleting) return;
+      if (deleteConfirmOpen) setDeleteConfirmOpen(false);
+      else onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
+  }, [deleteConfirmOpen, deleting, onClose]);
 
   async function onCopyDebug() {
     if (!navigator.clipboard) return;
@@ -687,11 +731,21 @@ function HistoryDetailDrawer({ detail, onClose }: { detail: HistoryDetail; onClo
     window.setTimeout(() => setDebugCopied(false), 1200);
   }
 
+  async function onDelete() {
+    const sessionId = row.providerInstanceId;
+    if (!sessionId || deleting) return;
+    setDeleting(true);
+    if (!await onDeleteSession(sessionId)) {
+      setDeleting(false);
+      setDeleteConfirmOpen(false);
+    }
+  }
+
   return (
     <div className="historyDetailBackdrop" role="dialog" aria-modal="true" aria-label="卷宗详情" onClick={onClose}>
       <aside className="historyDetailDrawer" onClick={(event) => event.stopPropagation()}>
         <header className="historyDetailHeader">
-          <div>
+          <div className="historyDetailMeta">
             <div className="historyDetailHeading">
               <h2>卷宗详情</h2>
               <button
@@ -706,9 +760,20 @@ function HistoryDetailDrawer({ detail, onClose }: { detail: HistoryDetail; onClo
             </div>
             <span>{row.provider.toUpperCase()} · {row.providerInstanceId ?? row.agentId}</span>
           </div>
-          <button className="iconPreviewClose" type="button" onClick={onClose} aria-label="关闭详情">
-            <X size={18} />
-          </button>
+          <div className="historyDetailHeaderActions">
+            <button
+              className="historyDeleteButton"
+              type="button"
+              disabled={!row.providerInstanceId || deleting}
+              onClick={() => setDeleteConfirmOpen(true)}
+            >
+              <Trash2 size={15} />
+              删除会话
+            </button>
+            <button className="iconPreviewClose" type="button" onClick={onClose} aria-label="关闭详情">
+              <X size={18} />
+            </button>
+          </div>
         </header>
 
         <div className="historyDetailSection">
@@ -754,6 +819,48 @@ function HistoryDetailDrawer({ detail, onClose }: { detail: HistoryDetail; onClo
           </div>
         </section>
       </aside>
+      {deleteConfirmOpen && row.providerInstanceId ? (
+        <div
+          className="historyDeleteConfirmBackdrop"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (event.target === event.currentTarget && !deleting) setDeleteConfirmOpen(false);
+          }}
+        >
+          <section
+            className="historyDeleteConfirmDialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="history-delete-title"
+            aria-describedby="history-delete-description"
+          >
+            <div className="historyDeleteConfirmIcon" aria-hidden="true">
+              <Trash2 size={20} />
+            </div>
+            <div className="historyDeleteConfirmCopy">
+              <h3 id="history-delete-title">删除整个会话</h3>
+              <p id="history-delete-description">该会话在 Agent Panel 中的全部历史和事件将被永久删除，且无法撤销</p>
+            </div>
+            <div className="historyDeleteConfirmSession">
+              <span>会话 ID</span>
+              <code title={row.providerInstanceId}>{row.providerInstanceId}</code>
+            </div>
+            <div className="historyDeleteConfirmActions">
+              <button type="button" disabled={deleting} onClick={() => setDeleteConfirmOpen(false)}>取消</button>
+              <button
+                ref={confirmDeleteButtonRef}
+                className="danger"
+                type="button"
+                disabled={deleting}
+                onClick={() => void onDelete()}
+              >
+                <Trash2 size={15} />
+                {deleting ? '删除中' : '确认删除'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -27,6 +27,24 @@ export async function fetchHistoryDetail(id: number): Promise<HistoryDetail> {
   return response.json();
 }
 
+export interface DeleteHistoryResult {
+  deletedHistory: number;
+  deletedEvents: number;
+}
+
+export async function deleteHistory(id: number): Promise<DeleteHistoryResult> {
+  const response = await fetch(`${apiBase}/api/history/${id}`, { method: 'DELETE', headers: authHeaders });
+  if (!response.ok) throw new Error(`History delete failed: ${response.status}`);
+  return response.json();
+}
+
+export async function deleteHistorySession(sessionId: string): Promise<DeleteHistoryResult> {
+  const params = new URLSearchParams({ sessionId });
+  const response = await fetch(`${apiBase}/api/history/session?${params}`, { method: 'DELETE', headers: authHeaders });
+  if (!response.ok) throw new Error(`History session delete failed: ${response.status}`);
+  return response.json();
+}
+
 export async function resolveApproval(id: string, action: 'approve' | 'reject'): Promise<ApprovalRequest> {
   const response = await fetch(`${apiBase}/api/approvals/${id}/${action}`, { method: 'POST', headers: authHeaders });
   if (!response.ok) throw new Error(`Approval update failed: ${response.status}`);

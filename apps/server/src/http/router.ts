@@ -48,6 +48,39 @@ export function createRouter(store: StateStore, ws: WebSocketHub) {
         return;
       }
 
+      if (req.method === 'DELETE' && url.pathname === '/api/history/session') {
+        if (!authorized(req, url)) {
+          json(res, { error: 'unauthorized' }, 401);
+          return;
+        }
+        const sessionId = (url.searchParams.get('sessionId') ?? '').trim();
+        if (!sessionId) {
+          json(res, { error: 'invalid session id' }, 400);
+          return;
+        }
+        json(res, store.deleteHistorySession(sessionId));
+        return;
+      }
+
+      if (req.method === 'DELETE' && url.pathname.startsWith('/api/history/')) {
+        if (!authorized(req, url)) {
+          json(res, { error: 'unauthorized' }, 401);
+          return;
+        }
+        const id = Number(url.pathname.split('/')[3]);
+        if (!Number.isInteger(id) || id < 1) {
+          json(res, { error: 'invalid history id' }, 400);
+          return;
+        }
+        const result = store.deleteHistory(id);
+        if (!result.deletedHistory) {
+          json(res, { error: 'history not found' }, 404);
+          return;
+        }
+        json(res, result);
+        return;
+      }
+
       if (req.method === 'POST' && url.pathname.startsWith('/api/hooks/')) {
         if (!authorized(req, url)) {
           json(res, { error: 'unauthorized' }, 401);
