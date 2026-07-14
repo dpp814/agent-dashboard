@@ -65,6 +65,7 @@ export function App() {
   const [historySessionId, setHistorySessionId] = useState('');
   const [historyProvider, setHistoryProvider] = useState<HistoryProviderFilter>('all');
   const [historyPage, setHistoryPage] = useState(0);
+  const [historyPageInput, setHistoryPageInput] = useState('1');
   const [historyDetail, setHistoryDetail] = useState<HistoryDetail>();
   const [error, setError] = useState<string>();
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>(() => notificationState());
@@ -150,6 +151,10 @@ export function App() {
     }, 250);
     return () => window.clearTimeout(timer);
   }, [search, historyPage, historyProvider, historySessionId]);
+
+  useEffect(() => {
+    setHistoryPageInput(String(historyPage + 1));
+  }, [historyPage]);
 
   useEffect(() => {
     const pendingIds = new Set(snapshot.approvals.map((approval) => approval.id));
@@ -340,7 +345,23 @@ export function App() {
     () => buildStats(visibleAgents, actionableApprovals, snapshot.stats),
     [visibleAgents, actionableApprovals, snapshot.stats]
   );
-  const historyNextDisabled = (historyPage + 1) * historyPageSize >= snapshot.historyTotal;
+  const historyTotalPages = Math.max(1, Math.ceil(snapshot.historyTotal / historyPageSize));
+  const historyNextDisabled = historyPage + 1 >= historyTotalPages;
+
+  function commitHistoryPageInput() {
+    if (!historyPageInput.trim()) {
+      setHistoryPageInput(String(historyPage + 1));
+      return;
+    }
+    const requestedPage = Number(historyPageInput);
+    if (!Number.isFinite(requestedPage)) {
+      setHistoryPageInput(String(historyPage + 1));
+      return;
+    }
+    const nextPage = Math.min(historyTotalPages, Math.max(1, Math.trunc(requestedPage)));
+    setHistoryPageInput(String(nextPage));
+    setHistoryPage(nextPage - 1);
+  }
 
   return (
     <main className="shell">
@@ -489,7 +510,28 @@ export function App() {
         <div className="pager historyPager">
           <div className="pagerControls">
             <button disabled={historyPage === 0} onClick={() => setHistoryPage((page) => Math.max(0, page - 1))}>上卷</button>
-            <span className="pagerPage">第 {historyPage + 1} 页</span>
+            <label className="pagerPage">
+              <span>第</span>
+              <input
+                type="number"
+                min={1}
+                max={historyTotalPages}
+                inputMode="numeric"
+                aria-label="跳转页码"
+                value={historyPageInput}
+                onChange={(event) => setHistoryPageInput(event.target.value)}
+                onFocus={(event) => event.currentTarget.select()}
+                onBlur={commitHistoryPageInput}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') event.currentTarget.blur();
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    setHistoryPageInput(String(historyPage + 1));
+                  }
+                }}
+              />
+              <span>/ {historyTotalPages} 页</span>
+            </label>
             <button disabled={historyNextDisabled} onClick={() => setHistoryPage((page) => page + 1)}>下卷</button>
           </div>
           <span className="pagerMeta">每页 {historyPageSize} 条，共 {snapshot.historyTotal} 条</span>
