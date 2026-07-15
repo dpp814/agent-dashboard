@@ -32,13 +32,15 @@ const emptySnapshot: DashboardSnapshot = {
   updatedAt: new Date().toISOString()
 };
 
-const historyPageSize = 50;
+const defaultHistoryPageSize = 50;
+const historyPageSizeOptions = [5, 10, 20, 50];
 const historyProviderOptions: Array<{ value: HistoryProviderFilter; label: string }> = [
   { value: 'all', label: '全部' },
   { value: 'claude', label: 'Claude' },
   { value: 'codex', label: 'Codex' }
 ];
 const themeStorageKey = 'agent-monitor-theme';
+const historyPageSizeStorageKey = 'agent-monitor-history-page-size';
 const themeModes: ThemeMode[] = ['day', 'night', 'eye'];
 const transientApprovalMs = 5000;
 const notifiedAgentEventKeys = new Set<string>();
@@ -65,6 +67,7 @@ export function App() {
   const [historySessionId, setHistorySessionId] = useState('');
   const [historyProvider, setHistoryProvider] = useState<HistoryProviderFilter>('all');
   const [historyPage, setHistoryPage] = useState(0);
+  const [historyPageSize, setHistoryPageSize] = useState(initialHistoryPageSize);
   const [historyPageInput, setHistoryPageInput] = useState('1');
   const [historyDetail, setHistoryDetail] = useState<HistoryDetail>();
   const [error, setError] = useState<string>();
@@ -79,7 +82,13 @@ export function App() {
   const notifiedApprovalIds = useRef(new Set<string>());
   const transientApprovalTimers = useRef(new Map<string, number>());
   const highlightedNotificationIconTimer = useRef<number | undefined>(undefined);
-  const historyQuery = useRef<{ search: string; page: number; provider: HistoryProviderFilter; sessionId: string }>({ search: '', page: 0, provider: 'all', sessionId: '' });
+  const historyQuery = useRef<{ search: string; page: number; pageSize: number; provider: HistoryProviderFilter; sessionId: string }>({
+    search: '',
+    page: 0,
+    pageSize: historyPageSize,
+    provider: 'all',
+    sessionId: ''
+  });
   const visibleApprovals = useMemo(
     () => snapshot.approvals
       .filter((approval) => !hiddenApprovalIds.has(approval.id))
@@ -109,6 +118,10 @@ export function App() {
   useEffect(() => {
     window.localStorage.setItem(iconUsageExpandedStorageKey, iconUsageExpanded ? '1' : '0');
   }, [iconUsageExpanded]);
+
+  useEffect(() => {
+    window.localStorage.setItem(historyPageSizeStorageKey, String(historyPageSize));
+  }, [historyPageSize]);
 
   useEffect(() => {
     if (!notificationSoundEnabled) return;
@@ -143,14 +156,14 @@ export function App() {
   }, [previewIcon]);
 
   useEffect(() => {
-    historyQuery.current = { search, page: historyPage, provider: historyProvider, sessionId: historySessionId };
+    historyQuery.current = { search, page: historyPage, pageSize: historyPageSize, provider: historyProvider, sessionId: historySessionId };
     const timer = window.setTimeout(() => {
       fetchSnapshot(search, historyPageSize, historyPage * historyPageSize, historyProvider, historySessionId)
         .then((next) => setSnapshot((current) => mergeHistorySnapshot(current, next)))
         .catch(() => {});
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [search, historyPage, historyProvider, historySessionId]);
+  }, [search, historyPage, historyPageSize, historyProvider, historySessionId]);
 
   useEffect(() => {
     setHistoryPageInput(String(historyPage + 1));
@@ -258,17 +271,17 @@ export function App() {
       return;
     }
     if (message.type === 'history') {
-      const { search: currentSearch, page, provider, sessionId } = historyQuery.current;
+      const { search: currentSearch, page, pageSize, provider, sessionId } = historyQuery.current;
       maybeNotifyHistory(message.payload, highlightNotificationIcon);
       if (currentSearch.trim() || provider !== 'all' || sessionId) {
-        fetchSnapshot(currentSearch, historyPageSize, page * historyPageSize, provider, sessionId)
+        fetchSnapshot(currentSearch, pageSize, page * pageSize, provider, sessionId)
           .then((next) => setSnapshot((current) => mergeHistorySnapshot(current, next)))
           .catch(() => {});
       } else {
         setSnapshot((current) => ({
           ...current,
           history: page === 0
-            ? [message.payload, ...current.history.filter((item) => item.id !== message.payload.id)].slice(0, historyPageSize)
+            ? [message.payload, ...current.history.filter((item) => item.id !== message.payload.id)].slice(0, pageSize)
             : current.history,
           historyTotal: current.history.some((item) => item.id === message.payload.id)
             ? current.historyTotal
@@ -314,11 +327,11 @@ export function App() {
       const nextSearch = clearSessionFilter ? '' : query.search;
       const nextSessionId = clearSessionFilter ? '' : query.sessionId;
       let nextPage = clearSessionFilter ? 0 : query.page;
-      let next = await fetchSnapshot(nextSearch, historyPageSize, nextPage * historyPageSize, query.provider, nextSessionId);
-      const lastPage = Math.max(0, Math.ceil(next.historyTotal / historyPageSize) - 1);
+      let next = await fetchSnapshot(nextSearch, query.pageSize, nextPage * query.pageSize, query.provider, nextSessionId);
+      const lastPage = Math.max(0, Math.ceil(next.historyTotal / query.pageSize) - 1);
       if (nextPage > lastPage) {
         nextPage = lastPage;
-        next = await fetchSnapshot(nextSearch, historyPageSize, nextPage * historyPageSize, query.provider, nextSessionId);
+        next = await fetchSnapshot(nextSearch, query.pageSize, nextPage * query.pageSize, query.provider, nextSessionId);
       }
       if (clearSessionFilter) {
         setSearch('');
@@ -535,7 +548,22 @@ export function App() {
             </label>
             <button disabled={historyNextDisabled} onClick={() => setHistoryPage((page) => page + 1)}>下卷</button>
           </div>
-          <span className="pagerMeta">每页 {historyPageSize} 条，共 {snapshot.historyTotal} 条</span>
+          <label className="pagerMeta">
+            <span>每页</span>
+            <select
+              aria-label="每页条数"
+              value={historyPageSize}
+              onChange={(event) => {
+                setHistoryPageSize(Number(event.target.value));
+                setHistoryPage(0);
+              }}
+            >
+              {historyPageSizeOptions.map((pageSize) => (
+                <option key={pageSize} value={pageSize}>{pageSize}</option>
+              ))}
+            </select>
+            <span>条，共 {snapshot.historyTotal} 条</span>
+          </label>
         </div>
       </section>
       {historyDetail ? (
@@ -1657,6 +1685,11 @@ function notificationTitle(permission: NotificationPermissionState): string {
 
 function initialNotificationSoundEnabled(): boolean {
   return window.localStorage.getItem(notificationSoundStorageKey) !== '0';
+}
+
+function initialHistoryPageSize(): number {
+  const stored = Number(window.localStorage.getItem(historyPageSizeStorageKey));
+  return historyPageSizeOptions.includes(stored) ? stored : defaultHistoryPageSize;
 }
 
 function initialIconUsageExpanded(): boolean {

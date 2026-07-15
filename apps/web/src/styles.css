@@ -1218,10 +1218,35 @@ input {
 }
 
 .pagerMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   color: var(--text-muted);
   font-size: 13px;
   line-height: 32px;
   white-space: nowrap;
+}
+
+.pagerMeta span {
+  min-width: 0;
+}
+
+.pagerMeta select {
+  height: 32px;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  outline: 0;
+  color: var(--text-strong);
+  background: var(--surface);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pagerMeta select:focus {
+  border-color: var(--info-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--info-strong) 14%, transparent);
 }
 
 .tableWrap {
