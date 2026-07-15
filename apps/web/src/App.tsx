@@ -233,7 +233,11 @@ export function App() {
 
   function handleWsMessage(message: WsMessage) {
     if (message.type === 'snapshot') {
-      setSnapshot(normalizeSnapshot(message.payload));
+      setSnapshot((current) => {
+        const next = normalizeSnapshot(message.payload);
+        // Broadcast snapshots use the server default limit; paged history is managed separately.
+        return { ...next, history: current.history, historyTotal: current.historyTotal };
+      });
       return;
     }
     if (message.type === 'agent') {
