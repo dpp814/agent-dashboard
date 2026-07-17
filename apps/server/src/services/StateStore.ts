@@ -1,7 +1,7 @@
 import type { AgentEvent, AgentStatus, ApprovalRequest, DashboardSnapshot, HistoryDetail, HistoryProviderFilter, TaskHistory } from '@agent-monitor/shared';
-import { readFileSync } from 'node:fs';
 import { AppDatabase } from '../db/Database.js';
 import { newId, stableId } from '../util/ids.js';
+import { taskStartFromTranscriptFile } from '../util/claudeTranscript.js';
 
 export class StateStore {
   private agents = new Map<string, AgentStatus>();
@@ -576,36 +576,7 @@ function taskFromTranscript(payload: Record<string, unknown>, beforeTs?: string)
 function taskStartFromTranscript(payload: Record<string, unknown>, beforeTs?: string): { startedAt: string; task?: string } | undefined {
   const transcriptPath = String(payload.transcript_path ?? payload.transcriptPath ?? '').trim();
   if (!transcriptPath) return undefined;
-  const cutoff = beforeTs ? Date.parse(beforeTs) : undefined;
-  const hasCutoff = typeof cutoff === 'number' && Number.isFinite(cutoff);
-  try {
-    const lines = readFileSync(transcriptPath, 'utf8').trim().split(/\r?\n/).reverse();
-    for (const line of lines) {
-      const row = JSON.parse(line) as Record<string, unknown>;
-      const rowTs = Date.parse(String(row.timestamp ?? ''));
-      if (hasCutoff && Number.isFinite(rowTs) && rowTs > cutoff) continue;
-      if (row.type !== 'user' || row.promptSource !== 'typed') continue;
-      const text = userMessageText(row.message);
-      if (text) return { startedAt: Number.isFinite(rowTs) ? String(row.timestamp) : beforeTs ?? new Date().toISOString(), task: text };
-    }
-  } catch {
-    return undefined;
-  }
-}
-
-function userMessageText(message: unknown): string | undefined {
-  const row = message as Record<string, unknown> | undefined;
-  if (!row || row.role !== 'user') return undefined;
-  if (typeof row.content === 'string') return row.content.trim() || undefined;
-  if (!Array.isArray(row.content)) return undefined;
-  return row.content
-    .map((item) => typeof item === 'string'
-      ? item
-      : typeof item === 'object' && item !== null && (item as Record<string, unknown>).type === 'text'
-        ? String((item as Record<string, unknown>).text ?? '')
-        : '')
-    .join('')
-    .trim() || undefined;
+  return taskStartFromTranscriptFile(transcriptPath, beforeTs);
 }
 
 function comparableAgent(agent: AgentStatus): string {

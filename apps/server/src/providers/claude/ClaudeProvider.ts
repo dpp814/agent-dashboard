@@ -1,4 +1,4 @@
-import { readFileSync, readlinkSync } from 'node:fs';
+import { readlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentEvent, AgentInstance, AgentStatus } from '@agent-monitor/shared';
@@ -6,6 +6,7 @@ import type { AgentProvider } from '../AgentProvider.js';
 import { commandExists, execFileText } from '../../util/exec.js';
 import { listProcesses, type ProcessRow } from '../../util/ps.js';
 import { stableId } from '../../util/ids.js';
+import { taskStartFromTranscriptFile } from '../../util/claudeTranscript.js';
 
 interface ClaudeAgentRow {
   id?: string;
@@ -120,40 +121,12 @@ export class ClaudeProvider implements AgentProvider {
 function claudeTask(row: ClaudeAgentRow): string | undefined {
   const sessionId = row.sessionId ?? row.id;
   if (!sessionId || !row.cwd) return undefined;
-  return taskFromTranscript(join(homedir(), '.claude', 'projects', claudeProjectSlug(row.cwd), `${sessionId}.jsonl`));
+  const path = join(homedir(), '.claude', 'projects', claudeProjectSlug(row.cwd), `${sessionId}.jsonl`);
+  return taskStartFromTranscriptFile(path)?.task;
 }
 
 function claudeProjectSlug(cwd: string): string {
   return cwd.replace(/\\/g, '/').replace(/\//g, '-');
-}
-
-function taskFromTranscript(path: string): string | undefined {
-  try {
-    const lines = readFileSync(path, 'utf8').trim().split(/\r?\n/).reverse();
-    for (const line of lines) {
-      const row = JSON.parse(line) as Record<string, unknown>;
-      if (row.type !== 'user' || row.promptSource !== 'typed') continue;
-      const text = userMessageText(row.message);
-      if (text) return text;
-    }
-  } catch {
-    return undefined;
-  }
-}
-
-function userMessageText(message: unknown): string | undefined {
-  const row = message as Record<string, unknown> | undefined;
-  if (!row || row.role !== 'user') return undefined;
-  if (typeof row.content === 'string') return row.content.trim() || undefined;
-  if (!Array.isArray(row.content)) return undefined;
-  return row.content
-    .map((item) => typeof item === 'string'
-      ? item
-      : typeof item === 'object' && item !== null && (item as Record<string, unknown>).type === 'text'
-        ? String((item as Record<string, unknown>).text ?? '')
-        : '')
-    .join('')
-    .trim() || undefined;
 }
 
 function mapClaudeState(row: ClaudeAgentRow): AgentStatus['status'] {

@@ -30,7 +30,7 @@ if (uninstall) {
 function installClaude(file) {
   const config = readJson(file);
   config.hooks ??= {};
-  for (const event of ['PermissionRequest', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'Stop', 'StopFailure', 'SessionEnd']) {
+  for (const event of ['PermissionRequest', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'UserPromptSubmit', 'Stop', 'StopFailure', 'SessionEnd']) {
     config.hooks[event] = withoutMonitor(config.hooks[event] ?? []);
     config.hooks[event].push({
       matcher: '*',

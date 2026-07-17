@@ -191,6 +191,7 @@ Claude hook events:
 - `PostToolUse`
 - `PostToolUseFailure`
 - `Notification`
+- `UserPromptSubmit`
 - `Stop`
 - `StopFailure`
 - `SessionEnd`
