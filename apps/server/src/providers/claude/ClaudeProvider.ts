@@ -12,7 +12,7 @@ interface ClaudeAgentRow {
   id?: string;
   cwd?: string;
   kind?: string;
-  startedAt?: string;
+  startedAt?: string | number;
   state?: 'working' | 'blocked' | 'done' | 'failed' | 'stopped';
   pid?: number;
   status?: string;
@@ -43,7 +43,7 @@ export class ClaudeProvider implements AgentProvider {
         name: row.name || `Claude ${providerInstanceId.slice(0, 8)}`,
         cwd: row.cwd,
         pid: row.pid,
-        startedAt: row.startedAt,
+        startedAt: isoTimestamp(row.startedAt),
         task: claudeTask(row),
         status: mapClaudeState(row),
         waitingFor: row.waitingFor,
@@ -116,6 +116,14 @@ export class ClaudeProvider implements AgentProvider {
       return processRows;
     }
   }
+}
+
+// `claude agents --json` emits startedAt as epoch milliseconds; the rest of the
+// pipeline expects ISO strings, so normalize here before anything persists it.
+function isoTimestamp(value?: string | number): string | undefined {
+  if (value === undefined) return undefined;
+  const ms = typeof value === 'number' ? value : /^\d+(\.\d+)?$/.test(value) ? Number(value) : Date.parse(value);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
 }
 
 function claudeTask(row: ClaudeAgentRow): string | undefined {

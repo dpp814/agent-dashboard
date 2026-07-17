@@ -1528,7 +1528,8 @@ function formatDateTime(value: string) {
 
 function formatDuration(start?: string, end?: string) {
   if (!start) return '-';
-  return formatMs((end ? Date.parse(end) : Date.now()) - Date.parse(start));
+  const ms = (end ? Date.parse(end) : Date.now()) - Date.parse(start);
+  return Number.isFinite(ms) ? formatMs(ms) : '-';
 }
 
 function formatActiveDuration(agent: AgentStatus) {

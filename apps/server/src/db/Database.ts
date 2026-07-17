@@ -486,7 +486,7 @@ function rowToAgent(row: Record<string, unknown>): AgentStatus {
     waitingFor: nullableString(row.waiting_for),
     lastResult: nullableString(row.last_result),
     activeSince: nullableString(row.active_since),
-    startedAt: nullableString(row.started_at),
+    startedAt: nullableTimestamp(row.started_at),
     updatedAt: String(row.updated_at),
     finishedAt: nullableString(row.finished_at),
     metadata: parseJsonObject(row.metadata_json)
@@ -514,7 +514,7 @@ function rowToHistory(row: Record<string, unknown>): TaskHistory {
     provider: row.provider as TaskHistory['provider'],
     providerInstanceId: nullableString(row.provider_instance_id),
     task: nullableString(row.task),
-    startedAt: nullableString(row.started_at),
+    startedAt: nullableTimestamp(row.started_at),
     endedAt: nullableString(row.ended_at),
     durationMs: nullableNumber(row.duration_ms),
     finalStatus: row.final_status as TaskHistory['finalStatus'],
@@ -576,6 +576,15 @@ function historyProviderFilter(value: unknown): HistoryProviderFilter {
 
 function nullableString(value: unknown): string | undefined {
   return value === null || value === undefined ? undefined : String(value);
+}
+
+// Rows written before epoch-millisecond startedAt values were normalized may
+// hold strings like "1784251951779.0"; convert those to ISO on read.
+function nullableTimestamp(value: unknown): string | undefined {
+  const raw = nullableString(value);
+  if (!raw || !/^\d+(\.\d+)?$/.test(raw)) return raw;
+  const ms = Number(raw);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
 }
 
 function nullableNumber(value: unknown): number | undefined {
