@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Check, ChevronDown, Clock, Copy, Eye, Flame, History, Layers3, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, Trash2, Volume2, VolumeX, X } from 'lucide-react';
+import { Bell, Check, ChevronDown, Clock, Copy, Eye, Flame, History, Layers3, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, Trash2, Volume2, VolumeX, X, Zap } from 'lucide-react';
 import type { AgentState, AgentStatus, ApprovalRequest, DashboardSnapshot, TaskHistory, WsMessage } from '@agent-monitor/shared';
 import { connectWs, deleteHistorySession, fetchHistoryDetail, fetchSnapshot, resolveApproval, type HistoryDetail, type HistoryProviderFilter } from './api';
 
@@ -48,6 +48,7 @@ const notificationIconUsageStorageKey = 'agent-monitor-notification-icon-usage';
 const notificationIconUsageEvent = 'agent-monitor-notification-icon-usage-change';
 const iconUsageExpandedStorageKey = 'agent-monitor-icon-usage-expanded';
 const notificationSoundStorageKey = 'agent-monitor-notification-sound';
+const autoApproveStorageKey = 'agent-monitor-auto-approve';
 let notificationAudioContext: AudioContext | undefined;
 const cultivationRanks = ['炼气', '筑基', '结丹', '元婴', '化神', '炼虚', '合体', '大乘', '真仙', '金仙', '太乙', '大罗', '道祖'];
 const notificationIconPaths = [
@@ -78,7 +79,9 @@ export function App() {
   const [previewIcon, setPreviewIcon] = useState<NotificationIconUsage>();
   const [theme, setTheme] = useState<ThemeMode>(() => initialTheme());
   const [notificationSoundEnabled, setNotificationSoundEnabled] = useState(() => initialNotificationSoundEnabled());
+  const [autoApproveEnabled, setAutoApproveEnabled] = useState(() => initialAutoApproveEnabled());
   const [hiddenApprovalIds, setHiddenApprovalIds] = useState<Set<string>>(() => new Set());
+  const autoApprovingIds = useRef(new Set<string>());
   const notifiedApprovalIds = useRef(new Set<string>());
   const transientApprovalTimers = useRef(new Map<string, number>());
   const highlightedNotificationIconTimer = useRef<number | undefined>(undefined);
@@ -168,6 +171,26 @@ export function App() {
   useEffect(() => {
     setHistoryPageInput(String(historyPage + 1));
   }, [historyPage]);
+
+  useEffect(() => {
+    window.localStorage.setItem(autoApproveStorageKey, autoApproveEnabled ? '1' : '0');
+  }, [autoApproveEnabled]);
+
+  useEffect(() => {
+    const pendingIds = new Set(snapshot.approvals.map((approval) => approval.id));
+    for (const id of autoApprovingIds.current) {
+      if (!pendingIds.has(id)) autoApprovingIds.current.delete(id);
+    }
+    if (!autoApproveEnabled) return;
+    for (const approval of actionableApprovals) {
+      if (approval.status !== 'pending' || autoApprovingIds.current.has(approval.id)) continue;
+      autoApprovingIds.current.add(approval.id);
+      onResolveApproval(approval, 'approve').catch((err: Error) => {
+        autoApprovingIds.current.delete(approval.id);
+        setError(err.message);
+      });
+    }
+  }, [autoApproveEnabled, actionableApprovals, snapshot.approvals]);
 
   useEffect(() => {
     const pendingIds = new Set(snapshot.approvals.map((approval) => approval.id));
@@ -422,6 +445,16 @@ export function App() {
               <h2 id="authorization-center">授令阁</h2>
               <span>{visibleApprovals.length}</span>
             </div>
+            <button
+              className={`autoApproveButton ${autoApproveEnabled ? 'isEnabled' : ''}`}
+              type="button"
+              aria-pressed={autoApproveEnabled}
+              title={autoApproveEnabled ? '自动授令已开启，Claude 待批法旨将自动准行' : '开启后 Claude 待批法旨将自动准行'}
+              onClick={() => setAutoApproveEnabled((current) => !current)}
+            >
+              <Zap size={14} />
+              <span>{autoApproveEnabled ? '自动授令·开' : '自动授令·关'}</span>
+            </button>
           </div>
           <p className="panelNote">Claude 可在此授令，Codex 只暂现片刻，仍需回命令行应答</p>
           <div className="approvalList">
@@ -1689,6 +1722,10 @@ function notificationTitle(permission: NotificationPermissionState): string {
 
 function initialNotificationSoundEnabled(): boolean {
   return window.localStorage.getItem(notificationSoundStorageKey) !== '0';
+}
+
+function initialAutoApproveEnabled(): boolean {
+  return window.localStorage.getItem(autoApproveStorageKey) === '1';
 }
 
 function initialHistoryPageSize(): number {

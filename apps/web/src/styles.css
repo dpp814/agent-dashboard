@@ -414,6 +414,34 @@ input {
   transform: rotate(180deg);
 }
 
+.autoApproveButton {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 0 9px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  color: var(--text-muted);
+  background: var(--surface-muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.autoApproveButton:hover {
+  color: var(--text-strong);
+  border-color: var(--border-strong);
+}
+
+.autoApproveButton.isEnabled {
+  color: var(--success-text);
+  border-color: var(--success-border);
+  background: var(--success-soft);
+}
+
 .agentGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));

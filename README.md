@@ -7,6 +7,7 @@
 - 监控 Claude Code、Codex CLI 进程和 Hook 事件
 - 实时状态看板：修行、候令、待言、圆满、异象、坐化
 - 授令阁：集中展示授权请求，Claude 可在 Web UI 里准行/驳回
+- 自动授令：可选开关，开启后自动准行 Claude 的授权请求（有风险，见 UI Guide 说明）
 - 卷宗：保存近期任务历史，支持搜索、分页、会话精确筛选、详情查看、恢复命令复制和会话删除
 - 道友图鉴：统计通知头像使用次数，按修仙境界升级，并支持折叠展示
 - 浏览器通知：任务圆满、任务异常、等待输入、待授权，支持传音/静默提示音切换
@@ -238,6 +239,20 @@ Shows pending approvals.
 - Codex: displayed as observed pending state; answer in the CLI when required
 
 Codex entries auto-expire after `AGENT_MONITOR_CODEX_APPROVAL_TTL_MS`, or resolve locally when matching tool completion is observed.
+
+#### 自动授令
+
+授令阁标题栏提供 `自动授令` 开关。开启后，所有可操作的 Claude 待批法旨会被自动准行，等同于逐条点击 `准行`，无需人工干预。
+
+- 仅对 Claude 授权请求生效，Codex 仍需回命令行应答
+- 开启开关的瞬间，当前已挂起的待批法旨会被立即批准，而不只是之后新到的
+- 开关状态保存在浏览器 `localStorage`，刷新页面后保持，默认关闭
+
+> **⚠️ 风险提示**
+>
+> 自动授令会跳过人工审查，无差别批准 Claude 发起的所有权限请求，包括执行任意 Shell 命令、读写与删除文件、访问网络等敏感操作。这相当于给 Agent 放开了权限闸门，Agent 的误操作或非预期行为将不再有人工拦截的机会。
+>
+> 建议仅在受控环境（如隔离的开发容器、可随时回滚的沙箱、无重要数据的实验目录）中开启，并保持看板处于可见状态以便随时关闭。**开启自动授令即表示你已知晓上述风险，由此产生的一切后果由使用者自行承担。**
 
 ### 道友图鉴
 
