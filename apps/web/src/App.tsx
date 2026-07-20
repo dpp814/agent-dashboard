@@ -986,7 +986,7 @@ function HistoryDetailDrawer({ detail, onClose, onDeleteSession }: {
             {detail.events.length ? detail.events.map((event) => (
               <article className="historyEventItem" key={event.id ?? `${event.type}-${event.ts}`}>
                 <span>{formatDateTime(event.ts)}</span>
-                <strong>{eventTypeLabel(event.type)}</strong>
+                <strong>{eventTypeLabel(event.type, event.payload)}</strong>
                 <p>{eventDisplayText(event) || event.providerInstanceId}</p>
               </article>
             )) : <EmptyState text="暂无事件" compact />}
@@ -1111,11 +1111,11 @@ function historyDebugText(detail: HistoryDetail): string {
   ].join('\n');
 }
 
-function eventTypeLabel(type: string): string {
+function eventTypeLabel(type: string, payload?: unknown): string {
   switch (type) {
     case 'started': return '开始';
     case 'tool_started': return '调用工具';
-    case 'tool_finished': return '工具完成';
+    case 'tool_finished': return isToolFailurePayload(payload) ? '工具失败' : '工具完成';
     case 'approval_requested': return '请求授权';
     case 'input_requested': return '等待输入';
     case 'finished': return '完成';
@@ -1124,6 +1124,11 @@ function eventTypeLabel(type: string): string {
     case 'discovered': return '发现';
     default: return type;
   }
+}
+
+function isToolFailurePayload(payload: unknown): boolean {
+  const row = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
+  return String(row.hook_event_name ?? row.hookEventName ?? '') === 'PostToolUseFailure';
 }
 
 function eventDisplayText(event: { type: string; payload: unknown }): string {

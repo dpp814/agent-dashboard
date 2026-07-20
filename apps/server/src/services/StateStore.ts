@@ -592,7 +592,7 @@ export function eventFromHook(provider: 'claude' | 'codex', input: Record<string
     hookEvent === 'PermissionRequest' ? 'approval_requested' :
     hookEvent === 'UserPromptSubmit' ? 'started' :
     hookEvent === 'PreToolUse' ? 'tool_started' :
-    hookEvent === 'PostToolUse' ? 'tool_finished' :
+    hookEvent === 'PostToolUse' || hookEvent === 'PostToolUseFailure' ? 'tool_finished' :
     hookEvent === 'Notification' && isWaitingNotification(input) ? 'input_requested' :
     hookEvent === 'Stop' || hookEvent === 'turn.completed' ? 'finished' :
     hookEvent === 'StopFailure' || hookEvent === 'turn.failed' || hookEvent === 'error' ? 'error' :
