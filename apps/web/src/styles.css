@@ -1428,6 +1428,7 @@ td {
 
 .historyDetailDrawer {
   width: min(560px, 100vw);
+  max-width: 100vw;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -1437,6 +1438,32 @@ td {
   border-left: 1px solid var(--border);
   background: var(--surface);
   box-shadow: -14px 0 38px rgb(0 0 0 / 0.18);
+}
+
+.historyDrawerResizeHandle {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 8px;
+  z-index: 1;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.historyDrawerResizeHandle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 3px;
+  width: 2px;
+  height: 100%;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+.historyDrawerResizeHandle:hover::after,
+.historyDrawerResizeHandle:active::after {
+  background: var(--info-text);
 }
 
 .historyDetailHeader {
@@ -1707,14 +1734,129 @@ td {
   font-weight: 700;
 }
 
-.historyResultBlock p {
+.historyResultBody {
   max-height: 180px;
   overflow: hidden;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.historyResultBlock.expanded .historyResultBody {
+  max-height: none;
+}
+
+.historyResultBody > :first-child {
+  margin-top: 0;
+}
+
+.historyResultBody > :last-child {
+  margin-bottom: 0;
+}
+
+.historyResultBody p {
+  margin: 0 0 8px;
   white-space: pre-wrap;
 }
 
-.historyResultBlock.expanded p {
-  max-height: none;
+.historyResultBody h1,
+.historyResultBody h2,
+.historyResultBody h3,
+.historyResultBody h4,
+.historyResultBody h5,
+.historyResultBody h6 {
+  margin: 12px 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.historyResultBody h1 {
+  font-size: 15px;
+}
+
+.historyResultBody h2 {
+  font-size: 14px;
+}
+
+.historyResultBody ul,
+.historyResultBody ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.historyResultBody li {
+  margin: 2px 0;
+}
+
+.historyResultBody li > p {
+  margin: 0;
+}
+
+.historyResultBody code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-strong, rgba(127, 127, 127, 0.16));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.historyResultBody pre {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border-radius: 6px;
+  background: var(--surface-strong, rgba(127, 127, 127, 0.16));
+}
+
+.historyResultBody pre code {
+  padding: 0;
+  background: transparent;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.historyResultBody blockquote {
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 3px solid var(--border-soft);
+  color: var(--text-muted);
+}
+
+.historyResultBody a {
+  color: var(--info-text);
+  text-decoration: underline;
+}
+
+.historyResultBody table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 0 8px;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.historyResultBody th,
+.historyResultBody td {
+  padding: 4px 8px;
+  border: 1px solid var(--border-soft);
+  text-align: left;
+}
+
+.historyResultBody th {
+  background: var(--surface-muted);
+  font-weight: 700;
+}
+
+.historyResultBody hr {
+  margin: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.historyResultBody img {
+  max-width: 100%;
 }
 
 .historyResultBlock button {

@@ -1,4 +1,6 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Bell, Check, ChevronDown, Clock, Copy, Eye, Flame, History, Layers3, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, Trash2, Volume2, VolumeX, X, Zap } from 'lucide-react';
 import type { AgentState, AgentStatus, ApprovalRequest, DashboardSnapshot, TaskHistory, WsMessage } from '@agent-monitor/shared';
 import { connectWs, deleteHistorySession, fetchHistoryDetail, fetchSnapshot, resolveApproval, type HistoryDetail, type HistoryProviderFilter } from './api';
@@ -843,6 +845,15 @@ function HistoryProviderIcon({ provider, size = 14 }: {
   return <Terminal size={size} />;
 }
 
+const DRAWER_MIN_WIDTH = 420;
+const DRAWER_DEFAULT_WIDTH = 560;
+const DRAWER_WIDTH_KEY = 'historyDrawerWidth';
+
+function clampDrawerWidth(width: number) {
+  const max = Math.max(DRAWER_MIN_WIDTH, window.innerWidth - 24);
+  return Math.min(Math.max(width, DRAWER_MIN_WIDTH), max);
+}
+
 function HistoryDetailDrawer({ detail, onClose, onDeleteSession }: {
   detail: HistoryDetail;
   onClose: () => void;
@@ -854,8 +865,14 @@ function HistoryDetailDrawer({ detail, onClose, onDeleteSession }: {
   const [deleting, setDeleting] = useState(false);
   const [resultExpanded, setResultExpanded] = useState(false);
   const [resultLong, setResultLong] = useState(false);
-  const resultRef = useRef<HTMLParagraphElement>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement>(null);
+  const [drawerWidth, setDrawerWidth] = useState(() => {
+    const stored = Number(localStorage.getItem(DRAWER_WIDTH_KEY));
+    return clampDrawerWidth(Number.isFinite(stored) && stored > 0 ? stored : DRAWER_DEFAULT_WIDTH);
+  });
+  const draggingRef = useRef(false);
+  const widthRef = useRef(drawerWidth);
   const row = detail.history;
   const taskText = historyTaskText(row);
   const resumeCommand = historyResumeCommand(row);
@@ -879,6 +896,36 @@ function HistoryDetailDrawer({ detail, onClose, onDeleteSession }: {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [deleteConfirmOpen, deleting, onClose]);
+  useEffect(() => {
+    const onResize = () => setDrawerWidth((current) => {
+      const next = clampDrawerWidth(current);
+      widthRef.current = next;
+      return next;
+    });
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  function onResizeStart(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    draggingRef.current = true;
+  }
+
+  function onResizeMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!draggingRef.current) return;
+    const next = clampDrawerWidth(window.innerWidth - event.clientX);
+    widthRef.current = next;
+    setDrawerWidth(next);
+  }
+
+  function onResizeEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    localStorage.setItem(DRAWER_WIDTH_KEY, String(Math.round(widthRef.current)));
+  }
 
   async function onCopyDebug() {
     if (!navigator.clipboard) return;
@@ -906,7 +953,20 @@ function HistoryDetailDrawer({ detail, onClose, onDeleteSession }: {
 
   return (
     <div className="historyDetailBackdrop" role="dialog" aria-modal="true" aria-label="卷宗详情" onClick={onClose}>
-      <aside className="historyDetailDrawer" onClick={(event) => event.stopPropagation()}>
+      <div
+        className="historyDrawerResizeHandle"
+        style={{ right: drawerWidth - 4 }}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="拖拽调整详情宽度"
+        title="拖拽调整宽度"
+        onClick={(event) => event.stopPropagation()}
+        onPointerDown={onResizeStart}
+        onPointerMove={onResizeMove}
+        onPointerUp={onResizeEnd}
+        onPointerCancel={onResizeEnd}
+      />
+      <aside className="historyDetailDrawer" style={{ width: drawerWidth }} onClick={(event) => event.stopPropagation()}>
         <header className="historyDetailHeader">
           <div className="historyDetailMeta">
             <div className="historyDetailHeading">
@@ -958,7 +1018,9 @@ function HistoryDetailDrawer({ detail, onClose, onDeleteSession }: {
                   {resultCopied ? <Check size={14} /> : <Copy size={14} />}
                 </button>
               </div>
-              <p ref={resultRef}>{resultText}</p>
+              <div ref={resultRef} className="historyResultBody">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{resultText}</ReactMarkdown>
+              </div>
               {resultLong ? (
                 <button type="button" onClick={() => setResultExpanded((current) => !current)}>
                   {resultExpanded ? '收起' : '展开全文'}
