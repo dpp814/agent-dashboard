@@ -52,6 +52,8 @@ export class DiscoveryService {
   }
 
   private cleanupOldRows(): void {
+    // historyDays <= 0 表示永久保留历史，不做清理
+    if (serverConfig.historyDays <= 0) return;
     const cutoff = new Date(Date.now() - serverConfig.historyDays * 24 * 60 * 60 * 1000).toISOString();
     this.db.cleanupHistory(cutoff);
     this.db.cleanupEvents(cutoff);
