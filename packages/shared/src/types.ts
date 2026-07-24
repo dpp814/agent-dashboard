@@ -1,5 +1,5 @@
-export type AgentProviderType = 'claude' | 'codex' | 'gemini' | 'opencode';
-export type HistoryProviderFilter = 'all' | 'claude' | 'codex';
+export type AgentProviderType = 'claude' | 'codex' | 'grok' | 'gemini' | 'opencode';
+export type HistoryProviderFilter = 'all' | 'claude' | 'codex' | 'grok';
 
 export type AgentState =
   | 'running'

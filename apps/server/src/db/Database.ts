@@ -571,7 +571,7 @@ function parseJsonObject(value: unknown): Record<string, unknown> {
 }
 
 function historyProviderFilter(value: unknown): HistoryProviderFilter {
-  return value === 'claude' || value === 'codex' ? value : 'all';
+  return value === 'claude' || value === 'codex' || value === 'grok' ? value : 'all';
 }
 
 function nullableString(value: unknown): string | undefined {

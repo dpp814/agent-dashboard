@@ -66,8 +66,8 @@ export class StateStore {
       this.db.upsertApproval(approval);
       agent.approval = approval;
     }
-    if (event.provider === 'codex' && event.type === 'tool_finished') {
-      this.resolveMatchingCodexApproval(event, 'approved');
+    if ((event.provider === 'codex' || event.provider === 'grok') && event.type === 'tool_finished') {
+      this.resolveMatchingProviderApproval(event, 'approved');
     }
 
     const completed = ['finished', 'error'].includes(event.type) &&
@@ -102,7 +102,7 @@ export class StateStore {
   }
 
   snapshot(search = '', historyLimit = 50, historyOffset = 0, historyProvider: HistoryProviderFilter = 'all', historySessionId = ''): DashboardSnapshot {
-    this.expireOldCodexApprovals();
+    this.expireOldProviderApprovals();
     this.clearOrphanedApprovalAgents();
     const agents = [...this.agents.values()];
     return {
@@ -220,22 +220,22 @@ export class StateStore {
     };
   }
 
-  private resolveMatchingCodexApproval(event: AgentEvent, status: 'approved' | 'rejected' | 'expired'): void {
+  private resolveMatchingProviderApproval(event: AgentEvent, status: 'approved' | 'rejected' | 'expired'): void {
     const payload = event.payload as Record<string, unknown>;
     const toolName = getToolName(payload);
     const summary = summarizeApproval(payload);
     const approval = this.db.listApprovals()
-      .filter((item) => item.provider === 'codex' && item.agentId === event.agentId)
+      .filter((item) => item.provider === event.provider && item.agentId === event.agentId)
       .filter((item) => !toolName || item.toolName === toolName)
       .filter((item) => item.summary === summary)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
     if (approval) this.resolveApproval(approval.id, status);
   }
 
-  private expireOldCodexApprovals(): void {
-    const cutoff = Date.now() - codexApprovalTtlMs();
+  private expireOldProviderApprovals(): void {
+    const cutoff = Date.now() - providerApprovalTtlMs();
     for (const approval of this.db.listApprovals()) {
-      if (approval.provider === 'codex' && Date.parse(approval.createdAt) < cutoff) {
+      if ((approval.provider === 'codex' || approval.provider === 'grok') && Date.parse(approval.createdAt) < cutoff) {
         this.resolveApproval(approval.id, 'expired');
       }
     }
@@ -266,7 +266,7 @@ export class StateStore {
   }
 }
 
-function codexApprovalTtlMs(): number {
+function providerApprovalTtlMs(): number {
   return Number(process.env.AGENT_MONITOR_CODEX_APPROVAL_TTL_MS ?? 2 * 60 * 1000);
 }
 
@@ -332,13 +332,14 @@ function isCompletingActiveAgent(agent: AgentStatus, hasActiveTask: boolean): bo
 }
 
 function isCompletableCompletionEvent(event: AgentEvent): boolean {
-  if (event.provider !== 'claude' && event.provider !== 'codex') return false;
+  if (event.provider !== 'claude' && event.provider !== 'codex' && event.provider !== 'grok') return false;
   const payload = event.payload as Record<string, unknown>;
   return Boolean(
     getTask(payload, event.ts) ||
     payload.transcript_path ||
     payload.transcriptPath ||
     payload.last_assistant_message ||
+    payload.lastAssistantMessage ||
     payload.result ||
     payload.error ||
     payload.message
@@ -443,6 +444,7 @@ function providerLabel(provider: AgentStatus['provider']): string {
   switch (provider) {
     case 'claude': return 'Claude';
     case 'codex': return 'Codex';
+    case 'grok': return 'Grok';
     case 'gemini': return 'Gemini';
     case 'opencode': return 'OpenCode';
     default: return provider;
@@ -517,7 +519,7 @@ function reduceAgent(current: AgentStatus, event: AgentEvent): AgentStatus {
         currentTool: undefined,
         waitingFor: undefined,
         activeSince: undefined,
-        lastResult: String(payload.last_assistant_message ?? payload.result ?? current.lastResult ?? '')
+        lastResult: String(payload.last_assistant_message ?? payload.lastAssistantMessage ?? payload.result ?? current.lastResult ?? '')
       };
     case 'error':
       return {
@@ -554,8 +556,13 @@ function getToolName(payload: Record<string, unknown>): string | undefined {
 }
 
 function getTask(payload: Record<string, unknown>, beforeTs?: string): string | undefined {
-  return String(payload.prompt ?? payload.task ?? payload.message ?? '').trim() ||
-    taskFromTranscript(payload, beforeTs);
+  const raw = String(payload.prompt ?? payload.task ?? payload.message ?? '').trim();
+  return stripGrokUserQueryTags(raw) || taskFromTranscript(payload, beforeTs);
+}
+
+// Grok wraps the user prompt in <user_query> tags in hook payloads.
+function stripGrokUserQueryTags(text: string): string {
+  return text.replace(/^<user_query>\s*/i, '').replace(/\s*<\/user_query>$/i, '').trim();
 }
 
 function getCwd(payload: Record<string, unknown>): string | undefined {
@@ -564,7 +571,7 @@ function getCwd(payload: Record<string, unknown>): string | undefined {
 
 function summarizeApproval(payload: Record<string, unknown>): string {
   const toolName = getToolName(payload) ?? 'Tool';
-  const input = payload.tool_input as Record<string, unknown> | undefined;
+  const input = (payload.tool_input ?? payload.toolInput) as Record<string, unknown> | undefined;
   const command = input?.command ?? input?.file_path ?? input?.path ?? input?.description;
   return command ? `${toolName} ${String(command)}` : `${toolName} approval requested`;
 }
@@ -584,18 +591,21 @@ function comparableAgent(agent: AgentStatus): string {
   return JSON.stringify(stable);
 }
 
-export function eventFromHook(provider: 'claude' | 'codex', input: Record<string, unknown>): AgentEvent {
-  const providerInstanceId = String(input.session_id ?? input.thread_id ?? input.conversation_id ?? newId('session'));
+export function eventFromHook(provider: 'claude' | 'codex' | 'grok', input: Record<string, unknown>): AgentEvent {
+  const providerInstanceId = String(input.session_id ?? input.sessionId ?? input.thread_id ?? input.conversation_id ?? newId('session'));
   const agentId = stableId(provider, providerInstanceId);
   const hookEvent = String(input.hook_event_name ?? input.hookEventName ?? input.type ?? '');
   const type: AgentEvent['type'] =
+    // Grok uses PreToolUse as its approval gate; treat risky tools as approval requests.
+    hookEvent === 'pre_tool_use' ? (isGrokApprovalTool(input) ? 'approval_requested' : 'tool_started') :
     hookEvent === 'PermissionRequest' ? 'approval_requested' :
-    hookEvent === 'UserPromptSubmit' ? 'started' :
+    hookEvent === 'UserPromptSubmit' || hookEvent === 'user_prompt_submit' ? 'started' :
     hookEvent === 'PreToolUse' ? 'tool_started' :
     hookEvent === 'PostToolUse' || hookEvent === 'PostToolUseFailure' ? 'tool_finished' :
-    hookEvent === 'Notification' && isWaitingNotification(input) ? 'input_requested' :
-    hookEvent === 'Stop' || hookEvent === 'turn.completed' ? 'finished' :
-    hookEvent === 'StopFailure' || hookEvent === 'turn.failed' || hookEvent === 'error' ? 'error' :
+    hookEvent === 'post_tool_use' || hookEvent === 'post_tool_use_failure' ? 'tool_finished' :
+    (hookEvent === 'Notification' || hookEvent === 'notification') && isWaitingNotification(input) ? 'input_requested' :
+    hookEvent === 'Stop' || hookEvent === 'stop' || hookEvent === 'turn.completed' ? 'finished' :
+    hookEvent === 'StopFailure' || hookEvent === 'stop_failure' || hookEvent === 'turn.failed' || hookEvent === 'error' ? 'error' :
     'heartbeat';
 
   return {
@@ -606,6 +616,21 @@ export function eventFromHook(provider: 'claude' | 'codex', input: Record<string
     ts: new Date().toISOString(),
     payload: input
   };
+}
+
+// Grok has no dedicated permission hook, so the panel gates only tools matching this
+// pattern via PreToolUse. An empty pattern disables grok approvals (monitor-only).
+function isGrokApprovalTool(input: Record<string, unknown>): boolean {
+  const pattern = process.env.AGENT_MONITOR_GROK_APPROVAL_TOOLS ??
+    '^(run_terminal_command|run_terminal_cmd|write|edit|search_replace|apply_patch|write_file|create_file|delete_file|str_replace)$';
+  if (!pattern) return false;
+  const toolName = getToolName(input);
+  if (!toolName) return false;
+  try {
+    return new RegExp(pattern).test(toolName);
+  } catch {
+    return false;
+  }
 }
 
 function isWaitingNotification(input: Record<string, unknown>): boolean {

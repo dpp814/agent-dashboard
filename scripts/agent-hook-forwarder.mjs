@@ -28,12 +28,19 @@ payload.__agent_monitor = {
   received_at: new Date().toISOString()
 };
 
+// Grok loads Claude Code's ~/.claude/settings.json hooks too, so it fires this
+// forwarder as "claude". Drop those — grok events arrive via its native hook.
+if (provider === 'claude' && process.env.GROK_HOOK_EVENT) {
+  process.exit(0);
+}
+
 const body = JSON.stringify(payload);
 const url = new URL(endpoint);
 const token = url.searchParams.get('token') || process.env.AGENT_MONITOR_TOKEN || '';
-const isClaudePermissionRequest =
-  provider === 'claude' &&
-  String(payload.hook_event_name ?? payload.hookEventName ?? payload.type ?? '') === 'PermissionRequest';
+const hookEventName = String(payload.hook_event_name ?? payload.hookEventName ?? payload.type ?? '');
+const isBlockingApproval =
+  (provider === 'claude' && hookEventName === 'PermissionRequest') ||
+  (provider === 'grok' && hookEventName === 'pre_tool_use');
 
 const request = url.protocol === 'https:' ? httpsRequest : httpRequest;
 const req = request({
@@ -46,7 +53,7 @@ const req = request({
     'content-length': Buffer.byteLength(body),
     ...(token ? { authorization: `Bearer ${token}` } : {})
   },
-  timeout: isClaudePermissionRequest ? 590_000 : 1500
+  timeout: isBlockingApproval ? 590_000 : 1500
 }, (res) => {
   const responseChunks = [];
   res.on('data', (chunk) => responseChunks.push(Buffer.from(chunk)));
@@ -57,7 +64,8 @@ const req = request({
     if (rawResponse) {
       try {
         const responseJson = JSON.parse(rawResponse);
-        if (responseJson?.hookSpecificOutput) {
+        // Claude wraps its decision in hookSpecificOutput; grok returns a top-level decision.
+        if (responseJson?.hookSpecificOutput || responseJson?.decision) {
           process.stdout.write(`${JSON.stringify(responseJson)}\n`);
         }
       } catch {

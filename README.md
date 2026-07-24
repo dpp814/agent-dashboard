@@ -1,13 +1,13 @@
 # AI修仙传
 
-本地 AI 编程 Agent 看板。它监控 Claude Code 和 Codex CLI 会话，接收 Hook 事件，展示修行状态、待授权、任务卷宗和通知图鉴，并可在浏览器中处理 Claude 授权请求。
+本地 AI 编程 Agent 看板。它监控 Claude Code、Codex CLI 和 Grok CLI 会话，接收 Hook 事件，展示修行状态、待授权、任务卷宗和通知图鉴，并可在浏览器中处理 Claude 和 Grok 授权请求。
 
 ## Features
 
-- 监控 Claude Code、Codex CLI 进程和 Hook 事件
+- 监控 Claude Code、Codex CLI、Grok CLI 进程和 Hook 事件
 - 实时状态看板：修行、候令、待言、圆满、异象、坐化
-- 授令阁：集中展示授权请求，Claude 可在 Web UI 里准行/驳回
-- 自动授令：可选开关，开启后自动准行 Claude 的授权请求（有风险，见 UI Guide 说明）
+- 授令阁：集中展示授权请求，Claude 与 Grok 可在 Web UI 里准行/驳回
+- 自动授令：可选开关，开启后自动准行 Claude 与 Grok 的授权请求（有风险，见 UI Guide 说明）
 - 卷宗：保存近期任务历史，支持搜索、分页、会话精确筛选、详情查看、恢复命令复制和会话删除
 - 道友图鉴：统计通知头像使用次数，按修仙境界升级，并支持折叠展示
 - 浏览器通知：任务圆满、任务异常、等待输入、待授权，支持传音/静默提示音切换
@@ -32,6 +32,7 @@ AI修仙传
 - npm
 - Claude Code CLI, optional
 - Codex CLI, optional
+- Grok CLI, optional
 
 `node:sqlite` is used by the server, so older Node.js versions may not work.
 
@@ -55,7 +56,7 @@ Install hooks:
 npm run hooks:install
 ```
 
-Start a Claude or Codex session. The dashboard updates automatically.
+Start a Claude, Codex, or Grok session. The dashboard updates automatically.
 
 ## Scripts
 
@@ -66,7 +67,7 @@ Start a Claude or Codex session. The dashboard updates automatically.
 | `npm run typecheck` | Type-check server and web |
 | `npm start` | Start built production server |
 | `npm run restart` | Build, stop existing local service on the port, restart in background |
-| `npm run hooks:install` | Install Claude/Codex hooks |
+| `npm run hooks:install` | Install Claude/Codex/Grok hooks |
 | `npm run hooks:uninstall` | Remove installed hooks |
 
 ## Development
@@ -134,7 +135,8 @@ Environment variables:
 | `AGENT_MONITOR_POLL_MS` | `2500` | Discovery polling interval |
 | `AGENT_MONITOR_HISTORY_DAYS` | `0` | Retention in days for history/events/resolved approvals; `<= 0` keeps everything permanently |
 | `AGENT_MONITOR_APPROVAL_TIMEOUT_MS` | `570000` | Claude permission request timeout |
-| `AGENT_MONITOR_CODEX_APPROVAL_TTL_MS` | `120000` | Codex pending approval display TTL |
+| `AGENT_MONITOR_CODEX_APPROVAL_TTL_MS` | `120000` | Codex/Grok pending approval display TTL |
+| `AGENT_MONITOR_GROK_APPROVAL_TOOLS` | `^(run_terminal_cmd\|run_terminal_command\|search_replace\|apply_patch\|write_file)$` | Regex of grok tool names gated as approvals via PreToolUse; empty disables grok approvals (monitor-only) |
 | `AGENT_MONITOR_WINDOWS_PS` | `1` | Enable Windows process discovery from WSL2 |
 | `AGENT_MONITOR_WINDOWS_PS_CACHE_MS` | `10000` | Windows process discovery cache |
 | `VITE_API_BASE` | `http://127.0.0.1:8787` | Web client API base at build/dev time |
@@ -156,6 +158,7 @@ Hooks forward CLI lifecycle events to:
 
 - `POST /api/hooks/claude`
 - `POST /api/hooks/codex`
+- `POST /api/hooks/grok`
 
 Install:
 
@@ -179,11 +182,13 @@ Files modified:
 
 - `~/.claude/settings.json`
 - `~/.codex/hooks.json`
+- `~/.grok/hooks/agent-monitor.json`
 
 Backups:
 
 - `~/.claude/settings.json.agent-monitor.bak`
 - `~/.codex/hooks.json.agent-monitor.bak`
+- `~/.grok/hooks/agent-monitor.json.agent-monitor.bak`
 
 Claude hook events:
 
@@ -205,6 +210,19 @@ Codex hook events:
 - `UserPromptSubmit`
 - `Stop`
 - `SubagentStop`
+
+Grok hook events (grok normalizes event names to snake_case at runtime):
+
+- `UserPromptSubmit`
+- `PreToolUse` (approval gate; risky tools are surfaced as approvals, see `AGENT_MONITOR_GROK_APPROVAL_TOOLS`)
+- `PostToolUse`
+- `PostToolUseFailure`
+- `Notification`
+- `Stop`
+- `StopFailure`
+- `SessionEnd`
+
+Grok has no dedicated permission hook, so approvals are gated through `PreToolUse`: the panel returns a top-level `{"decision":"deny"}` to block a rejected/timed-out tool, and `{"decision":"allow"}` on approve. Because grok also executes hooks from `~/.claude/settings.json`, the forwarder tags events by the `GROK_HOOK_EVENT` marker so grok turns are never mislabeled as Claude.
 
 ## UI Guide
 
@@ -236,21 +254,22 @@ If an agent is already represented in 授令阁, the duplicate waiting card is h
 Shows pending approvals.
 
 - Claude: approve/reject in the browser; the decision is returned to the live `PermissionRequest` hook
+- Grok: approve/reject in the browser; the decision is returned to the live `PreToolUse` hook as a top-level allow/deny
 - Codex: displayed as observed pending state; answer in the CLI when required
 
-Codex entries auto-expire after `AGENT_MONITOR_CODEX_APPROVAL_TTL_MS`, or resolve locally when matching tool completion is observed.
+Codex and Grok entries auto-expire after `AGENT_MONITOR_CODEX_APPROVAL_TTL_MS`, or resolve locally when matching tool completion is observed.
 
 #### 自动授令
 
-授令阁标题栏提供 `自动授令` 开关。开启后，所有可操作的 Claude 待批法旨会被自动准行，等同于逐条点击 `准行`，无需人工干预。
+授令阁标题栏提供 `自动授令` 开关。开启后，所有可操作的 Claude 与 Grok 待批法旨会被自动准行，等同于逐条点击 `准行`，无需人工干预。
 
-- 仅对 Claude 授权请求生效，Codex 仍需回命令行应答
+- 对 Claude 与 Grok 授权请求生效，Codex 仍需回命令行应答
 - 开启开关的瞬间，当前已挂起的待批法旨会被立即批准，而不只是之后新到的
 - 开关状态保存在浏览器 `localStorage`，刷新页面后保持，默认关闭
 
 > **⚠️ 风险提示**
 >
-> 自动授令会跳过人工审查，无差别批准 Claude 发起的所有权限请求，包括执行任意 Shell 命令、读写与删除文件、访问网络等敏感操作。这相当于给 Agent 放开了权限闸门，Agent 的误操作或非预期行为将不再有人工拦截的机会。
+> 自动授令会跳过人工审查，无差别批准 Claude 与 Grok 发起的所有权限请求，包括执行任意 Shell 命令、读写与删除文件、访问网络等敏感操作。这相当于给 Agent 放开了权限闸门，Agent 的误操作或非预期行为将不再有人工拦截的机会。
 >
 > 建议仅在受控环境（如隔离的开发容器、可随时回滚的沙箱、无重要数据的实验目录）中开启，并保持看板处于可见状态以便随时关闭。**开启自动授令即表示你已知晓上述风险，由此产生的一切后果由使用者自行承担。**
 
@@ -291,7 +310,7 @@ Row actions:
 
 - View detail: open a drawer with full result summary, session metadata, resume command, and event timeline
 - Copy task: copy the prompt/result summary used for display
-- Copy resume command: copy `claude --resume ...` or `codex resume ...` when available
+- Copy resume command: copy `claude --resume ...`, `codex resume ...`, or `grok --resume ...` when available
 - Session history: filter history by exact session id while keeping the current provider filter
 - Delete session: remove all task history and events for the session after confirmation
 
@@ -354,6 +373,7 @@ DELETE /api/history/session?sessionId=...
 ```http
 POST /api/hooks/claude
 POST /api/hooks/codex
+POST /api/hooks/grok
 ```
 
 ### Approval Resolution
@@ -407,7 +427,7 @@ npm start
 npm run hooks:install
 ```
 
-Then restart a Claude/Codex session.
+Then restart a Claude/Codex/Grok session.
 
 ### Hooks Do Not Send Events
 
@@ -469,6 +489,7 @@ These are covered by `.gitignore`.
 ## Limitations
 
 - Codex approval handling is display-oriented; answer in the CLI when Codex requires interaction
+- Grok approvals gate through `PreToolUse`: panel reject is a hard deny, but panel approve only falls through to grok's own permission rules (the TUI may still prompt); for remote-only approval run grok with `--always-approve` or allow rules and let the panel be the gate. Hook timeouts fail open on grok's side
 - Claude foreground sessions need hooks for precise lifecycle updates
 - Browser notifications require browser permission and support
 - This project is intended for local development use; set a token before exposing it beyond localhost

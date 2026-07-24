@@ -3,13 +3,14 @@ import { serverConfig } from '../config.js';
 import { AppDatabase } from '../db/Database.js';
 import { ClaudeProvider } from '../providers/claude/ClaudeProvider.js';
 import { CodexProvider } from '../providers/codex/CodexProvider.js';
+import { GrokProvider } from '../providers/grok/GrokProvider.js';
 import { StateStore } from './StateStore.js';
 import { WebSocketHub } from '../ws/WebSocketHub.js';
 
 export class DiscoveryService {
   private timer: NodeJS.Timeout | undefined;
   private cleanupTimer: NodeJS.Timeout | undefined;
-  private providers = [new ClaudeProvider(), new CodexProvider()];
+  private providers = [new ClaudeProvider(), new CodexProvider(), new GrokProvider()];
 
   constructor(
     private store: StateStore,

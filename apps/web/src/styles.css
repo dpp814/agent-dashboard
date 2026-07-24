@@ -1094,6 +1094,10 @@ input {
   --provider-color: var(--success-text);
 }
 
+.provider-grok {
+  --provider-color: var(--text-strong);
+}
+
 .historyProviderFilter button svg {
   flex: none;
   color: var(--provider-color);
@@ -1114,6 +1118,10 @@ input {
 
 .historyProviderGlyph.brand-codex {
   mask-image: url('/provider-icon/openai.svg');
+}
+
+.historyProviderGlyph.brand-grok {
+  mask-image: url('/provider-icon/grok.svg');
 }
 
 .historyProviderFilter button.active {

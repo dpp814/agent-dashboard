@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, chmodSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, chmodSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -16,14 +16,18 @@ chmodSync(forwarder, 0o755);
 
 const claudeFile = join(homedir(), '.claude', 'settings.json');
 const codexFile = join(homedir(), '.codex', 'hooks.json');
+const grokHome = process.env.GROK_HOME || join(homedir(), '.grok');
+const grokFile = join(grokHome, 'hooks', 'agent-monitor.json');
 
 if (uninstall) {
   uninstallClaude(claudeFile);
   uninstallCodex(codexFile);
+  uninstallGrok(grokFile);
   console.log('Agent Monitor hooks removed');
 } else {
   installClaude(claudeFile);
   installCodex(codexFile);
+  installGrok(grokFile);
   console.log(`Agent Monitor hooks installed for ${baseUrl}`);
 }
 
@@ -85,6 +89,28 @@ function uninstallCodex(file) {
     }
   }
   writeJson(file, config);
+}
+
+function installGrok(file) {
+  // This file belongs entirely to Agent Monitor, so we own the whole hooks object.
+  // Grok matchers are regexes (empty/omitted matches everything), so no matcher here —
+  // Claude's "*" glob would be an invalid regex.
+  const config = { hooks: {} };
+  for (const event of ['UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'Stop', 'StopFailure', 'SessionEnd']) {
+    config.hooks[event] = [{
+      hooks: [{
+        type: 'command',
+        command: `node ${JSON.stringify(forwarder)} grok ${JSON.stringify(hookUrl('grok'))}`,
+        timeout: event === 'PreToolUse' ? 600 : 5
+      }]
+    }];
+  }
+  writeJson(file, config);
+}
+
+function uninstallGrok(file) {
+  if (!existsSync(file)) return;
+  rmSync(file);
 }
 
 function withoutMonitor(groups) {

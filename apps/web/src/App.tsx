@@ -39,7 +39,8 @@ const historyPageSizeOptions = [5, 10, 20, 50];
 const historyProviderOptions: Array<{ value: HistoryProviderFilter; label: string }> = [
   { value: 'all', label: '全部' },
   { value: 'claude', label: 'Claude' },
-  { value: 'codex', label: 'Codex' }
+  { value: 'codex', label: 'Codex' },
+  { value: 'grok', label: 'Grok' }
 ];
 const themeStorageKey = 'agent-monitor-theme';
 const historyPageSizeStorageKey = 'agent-monitor-history-page-size';
@@ -451,14 +452,14 @@ export function App() {
               className={`autoApproveButton ${autoApproveEnabled ? 'isEnabled' : ''}`}
               type="button"
               aria-pressed={autoApproveEnabled}
-              title={autoApproveEnabled ? '自动授令已开启，Claude 待批法旨将自动准行' : '开启后 Claude 待批法旨将自动准行'}
+              title={autoApproveEnabled ? '自动授令已开启，Claude 与 Grok 待批法旨将自动准行' : '开启后 Claude 与 Grok 待批法旨将自动准行'}
               onClick={() => setAutoApproveEnabled((current) => !current)}
             >
               <Zap size={14} />
               <span>{autoApproveEnabled ? '自动授令·开' : '自动授令·关'}</span>
             </button>
           </div>
-          <p className="panelNote">Claude 可在此授令，Codex 只暂现片刻，仍需回命令行应答</p>
+          <p className="panelNote">Claude 与 Grok 可在此授令，Codex 只暂现片刻，仍需回命令行应答</p>
           <div className="approvalList">
             {visibleApprovals.length ? visibleApprovals.map((approval) => (
               <ApprovalCard key={approval.id} approval={approval} onResolve={onResolveApproval} />
@@ -824,7 +825,7 @@ function HistoryTable({ rows, onShowDetail, onShowSessionHistory }: {
 }
 
 function HistoryProviderIdentity({ provider }: { provider: TaskHistory['provider'] }) {
-  const label = provider === 'claude' ? 'Claude' : provider === 'codex' ? 'Codex' : provider;
+  const label = provider === 'claude' ? 'Claude' : provider === 'codex' ? 'Codex' : provider === 'grok' ? 'Grok' : provider;
   return (
     <span className={`historyProviderIdentity provider-${provider}`} title={label} aria-label={label}>
       <span className="historyProviderMark" aria-hidden="true">
@@ -838,7 +839,7 @@ function HistoryProviderIcon({ provider, size = 14 }: {
   provider: TaskHistory['provider'] | HistoryProviderFilter;
   size?: number;
 }) {
-  if (provider === 'claude' || provider === 'codex') {
+  if (provider === 'claude' || provider === 'codex' || provider === 'grok') {
     return <span className={`historyProviderGlyph brand-${provider}`} style={{ width: size, height: size }} aria-hidden="true" />;
   }
   if (provider === 'all') return <Layers3 size={size} />;
@@ -1128,6 +1129,9 @@ function historyResumeCommand(row: TaskHistory): string | undefined {
   if (row.provider === 'codex' && !/^\d+$/.test(row.providerInstanceId)) {
     return `codex resume ${row.providerInstanceId}`;
   }
+  if (row.provider === 'grok' && !/^\d+$/.test(row.providerInstanceId)) {
+    return `grok --resume ${row.providerInstanceId}`;
+  }
   return undefined;
 }
 
@@ -1410,13 +1414,13 @@ function agentsOutsideApprovalCenter(agents: AgentStatus[], approvals: ApprovalR
 }
 
 function isActionableApproval(approval: ApprovalRequest): boolean {
-  return approval.provider === 'claude';
+  return approval.provider === 'claude' || approval.provider === 'grok';
 }
 
 function isCurrentApproval(approval: ApprovalRequest, agents: AgentStatus[], approvals: ApprovalRequest[]): boolean {
-  if (approval.provider !== 'claude') return true;
+  if (approval.provider !== 'claude' && approval.provider !== 'grok') return true;
   const latestApproval = approvals
-    .filter((item) => item.provider === 'claude' && item.agentId === approval.agentId)
+    .filter((item) => item.provider === approval.provider && item.agentId === approval.agentId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   if (latestApproval?.id !== approval.id) return false;
   const agent = agents.find((item) => item.id === approval.agentId);
@@ -1546,6 +1550,7 @@ function providerLabel(provider: AgentStatus['provider']): string {
   switch (provider) {
     case 'claude': return 'Claude';
     case 'codex': return 'Codex';
+    case 'grok': return 'Grok';
     case 'gemini': return 'Gemini';
     case 'opencode': return 'OpenCode';
     default: return provider;

@@ -93,7 +93,11 @@ export function createRouter(store: StateStore, ws: WebSocketHub) {
         }
         const body = await readJson(req);
         const result = store.applyEvent(eventFromHook(provider, body));
-        const approvalPromise = provider === 'claude' && isPermissionRequest(body) && result.approval
+        const isBlockingApproval = result.approval && (
+          (provider === 'claude' && isPermissionRequest(body)) ||
+          (provider === 'grok' && isGrokPreToolUse(body))
+        );
+        const approvalPromise = isBlockingApproval && result.approval
           ? store.waitForApproval(result.approval.id, approvalTimeoutMs())
           : undefined;
         ws.broadcast({ type: 'snapshot', payload: store.snapshot() });
@@ -113,7 +117,10 @@ export function createRouter(store: StateStore, ws: WebSocketHub) {
           res.off('close', expireOnClose);
           if (approval?.status === 'expired') ws.broadcast({ type: 'approval', payload: approval });
           if (res.destroyed) return;
-          json(res, claudePermissionDecision(toDecisionStatus(approval?.status)));
+          const decisionStatus = toDecisionStatus(approval?.status);
+          json(res, provider === 'grok'
+            ? grokPermissionDecision(decisionStatus)
+            : claudePermissionDecision(decisionStatus));
           return;
         }
         json(res, { ok: true });
@@ -175,18 +182,23 @@ function authorized(req: IncomingMessage, url: URL): boolean {
   return bearer === serverConfig.token || url.searchParams.get('token') === serverConfig.token;
 }
 
-function hookProvider(pathname: string): 'claude' | 'codex' | undefined {
+function hookProvider(pathname: string): 'claude' | 'codex' | 'grok' | undefined {
   if (pathname === '/api/hooks/claude') return 'claude';
   if (pathname === '/api/hooks/codex') return 'codex';
+  if (pathname === '/api/hooks/grok') return 'grok';
   return undefined;
 }
 
-function historyProviderFilter(value: string | null): 'all' | 'claude' | 'codex' {
-  return value === 'claude' || value === 'codex' ? value : 'all';
+function historyProviderFilter(value: string | null): 'all' | 'claude' | 'codex' | 'grok' {
+  return value === 'claude' || value === 'codex' || value === 'grok' ? value : 'all';
 }
 
 function isPermissionRequest(body: Record<string, unknown>): boolean {
   return String(body.hook_event_name ?? body.hookEventName ?? body.type ?? '') === 'PermissionRequest';
+}
+
+function isGrokPreToolUse(body: Record<string, unknown>): boolean {
+  return String(body.hook_event_name ?? body.hookEventName ?? body.type ?? '') === 'pre_tool_use';
 }
 
 function approvalTimeoutMs(): number {
@@ -205,6 +217,16 @@ function claudePermissionDecision(status: ApprovalStatus): Record<string, unknow
       hookEventName: 'PermissionRequest',
       decision
     }
+  };
+}
+
+// Grok's PreToolUse hook gates a tool via a top-level decision object on stdout;
+// only an explicit deny blocks the call, allow falls through to grok's own rules.
+function grokPermissionDecision(status: ApprovalStatus): Record<string, unknown> {
+  if (status === 'approved') return { decision: 'allow' };
+  return {
+    decision: 'deny',
+    reason: status === 'expired' ? 'Approval timed out in Agent Monitor' : 'Rejected in Agent Monitor'
   };
 }
 
