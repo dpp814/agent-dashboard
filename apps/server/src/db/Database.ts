@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentEvent, AgentStatus, ApprovalRequest, DashboardStats, HistoryProviderFilter, TaskHistory } from '@agent-monitor/shared';
 import { serverConfig } from '../config.js';
+import { cleanTaskText } from '../util/taskText.js';
 
 export class AppDatabase {
   private db = new DatabaseSync(join(serverConfig.dataDir, 'agent-monitor.sqlite'));
@@ -205,6 +206,15 @@ export class AppDatabase {
     return Boolean(row);
   }
 
+  hasHistoryForTaskStart(agentId: string, startedAt: string): boolean {
+    const row = this.db.prepare(`
+      SELECT 1 FROM task_history
+      WHERE agent_id = ? AND started_at = ?
+      LIMIT 1
+    `).get(agentId, startedAt);
+    return Boolean(row);
+  }
+
   findLatestTaskStart(agentId: string, beforeTs: string): { startedAt: string; task?: string } | undefined {
     const row = this.db.prepare(`
       SELECT ts, payload_json FROM agent_events
@@ -216,7 +226,7 @@ export class AppDatabase {
     const payload = parseJsonObject(row.payload_json);
     return {
       startedAt: row.ts,
-      task: nullableString(payload.prompt ?? payload.task ?? payload.message) ?? taskFromTranscript(payload, row.ts)
+      task: cleanTaskText(payload.prompt ?? payload.task ?? payload.message) ?? taskFromTranscript(payload, row.ts)
     };
   }
 
@@ -482,10 +492,14 @@ export class AppDatabase {
       const payload = parseJsonObject(row.payload_json);
       const started = this.findLatestTaskStart(row.agent_id, row.ts);
       if (!started) continue;
+      // Ctrl+Q emits a second stop(reason=shutdown) after end_turn; keep only mid-turn quits.
+      if (String(payload.reason ?? '') === 'shutdown' && this.hasHistoryForTaskStart(row.agent_id, started.startedAt)) {
+        continue;
+      }
       const resultSummary = nullableString(
         payload.last_assistant_message ?? payload.result ?? payload.error ?? payload.message
       );
-      const task = nullableString(payload.prompt ?? payload.task ?? payload.message) ??
+      const task = cleanTaskText(payload.prompt ?? payload.task ?? payload.message) ??
         taskFromTranscript(payload, row.ts) ??
         started.task;
       if (!task && !resultSummary) continue;

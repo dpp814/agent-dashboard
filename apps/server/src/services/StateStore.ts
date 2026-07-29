@@ -2,6 +2,7 @@ import type { AgentEvent, AgentStatus, ApprovalRequest, DashboardSnapshot, Histo
 import { AppDatabase } from '../db/Database.js';
 import { newId, stableId } from '../util/ids.js';
 import { taskStartFromTranscriptFile } from '../util/claudeTranscript.js';
+import { cleanTaskText } from '../util/taskText.js';
 
 export class StateStore {
   private agents = new Map<string, AgentStatus>();
@@ -88,7 +89,7 @@ export class StateStore {
         agentId: agent.id,
         provider: agent.provider,
         providerInstanceId: agent.providerInstanceId,
-        task: eventTask ?? activeTask?.task ?? agent.task,
+        task: cleanTaskText(eventTask ?? activeTask?.task ?? agent.task),
         startedAt,
         endedAt,
         durationMs: durationMs(startedAt, endedAt),
@@ -345,6 +346,9 @@ function isCompletingActiveAgent(agent: AgentStatus, hasActiveTask: boolean): bo
 function isCompletableCompletionEvent(event: AgentEvent): boolean {
   if (event.provider !== 'claude' && event.provider !== 'codex' && event.provider !== 'grok') return false;
   const payload = event.payload as Record<string, unknown>;
+  // Ctrl+Q / session exit emits stop reason=shutdown after the turn already ended.
+  // Only record history for shutdown when there is still an active task (mid-turn quit).
+  if (String(payload.reason ?? '') === 'shutdown') return false;
   return Boolean(
     getTask(payload, event.ts) ||
     payload.transcript_path ||
@@ -567,13 +571,7 @@ function getToolName(payload: Record<string, unknown>): string | undefined {
 }
 
 function getTask(payload: Record<string, unknown>, beforeTs?: string): string | undefined {
-  const raw = String(payload.prompt ?? payload.task ?? payload.message ?? '').trim();
-  return stripGrokUserQueryTags(raw) || taskFromTranscript(payload, beforeTs);
-}
-
-// Grok wraps the user prompt in <user_query> tags in hook payloads.
-function stripGrokUserQueryTags(text: string): string {
-  return text.replace(/^<user_query>\s*/i, '').replace(/\s*<\/user_query>$/i, '').trim();
+  return cleanTaskText(payload.prompt ?? payload.task ?? payload.message) || taskFromTranscript(payload, beforeTs);
 }
 
 function getCwd(payload: Record<string, unknown>): string | undefined {
