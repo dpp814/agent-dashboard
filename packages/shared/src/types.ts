@@ -76,6 +76,8 @@ export interface TaskHistory {
   durationMs?: number;
   finalStatus: AgentState;
   resultSummary?: string;
+  favorited?: boolean;
+  favoritedAt?: string;
 }
 
 export interface HistoryDetail {

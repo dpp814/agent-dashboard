@@ -67,6 +67,8 @@ export class AppDatabase {
     `);
     this.addColumnIfMissing('agents', 'active_since', 'TEXT');
     this.addColumnIfMissing('task_history', 'provider_instance_id', 'TEXT');
+    this.addColumnIfMissing('task_history', 'favorited', 'INTEGER NOT NULL DEFAULT 0');
+    this.addColumnIfMissing('task_history', 'favorited_at', 'TEXT');
     this.dedupeCompletionHistory();
     this.db.exec(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_task_history_agent_ended
@@ -76,6 +78,8 @@ export class AppDatabase {
       ON task_history(provider, ended_at);
       CREATE INDEX IF NOT EXISTS idx_task_history_session_ended
       ON task_history(provider_instance_id, ended_at);
+      CREATE INDEX IF NOT EXISTS idx_task_history_favorited_at
+      ON task_history(favorited, favorited_at);
       CREATE INDEX IF NOT EXISTS idx_agent_events_agent_type_ts
       ON agent_events(agent_id, type, ts);
     `);
@@ -253,7 +257,7 @@ export class AppDatabase {
     return approvals.map((approval) => approval.agentId);
   }
 
-  listHistory(search = '', provider: HistoryProviderFilter = 'all', limit = 50, offset = 0, sessionId = ''): TaskHistory[] {
+  listHistory(search = '', provider: HistoryProviderFilter = 'all', limit = 50, offset = 0, sessionId = '', favoritesOnly = false): TaskHistory[] {
     const like = `%${search}%`;
     const safeProvider = historyProviderFilter(provider);
     const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
@@ -262,6 +266,7 @@ export class AppDatabase {
       SELECT * FROM task_history
       WHERE (? = 'all' OR provider = ?)
         AND (? = '' OR provider_instance_id = ?)
+        AND (? = 0 OR favorited = 1)
         AND (? = '%%' OR task LIKE ? OR provider LIKE ? OR provider_instance_id LIKE ? OR agent_id LIKE ? OR final_status LIKE ? OR result_summary LIKE ?)
       ORDER BY COALESCE(ended_at, started_at) DESC
       LIMIT ? OFFSET ?
@@ -270,6 +275,7 @@ export class AppDatabase {
       safeProvider,
       sessionId,
       sessionId,
+      favoritesOnly ? 1 : 0,
       like,
       like,
       like,
@@ -282,21 +288,47 @@ export class AppDatabase {
     ).map(rowToHistory);
   }
 
-  countHistory(search = '', provider: HistoryProviderFilter = 'all', sessionId = ''): number {
+  countHistory(search = '', provider: HistoryProviderFilter = 'all', sessionId = '', favoritesOnly = false): number {
     const like = `%${search}%`;
     const safeProvider = historyProviderFilter(provider);
     const row = this.db.prepare(`
       SELECT COUNT(*) AS count FROM task_history
       WHERE (? = 'all' OR provider = ?)
         AND (? = '' OR provider_instance_id = ?)
+        AND (? = 0 OR favorited = 1)
         AND (? = '%%' OR task LIKE ? OR provider LIKE ? OR provider_instance_id LIKE ? OR agent_id LIKE ? OR final_status LIKE ? OR result_summary LIKE ?)
-    `).get(safeProvider, safeProvider, sessionId, sessionId, like, like, like, like, like, like, like) as { count: number } | undefined;
+    `).get(
+      safeProvider,
+      safeProvider,
+      sessionId,
+      sessionId,
+      favoritesOnly ? 1 : 0,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like
+    ) as { count: number } | undefined;
     return row?.count ?? 0;
   }
 
   getHistory(id: number): TaskHistory | undefined {
     const row = this.db.prepare('SELECT * FROM task_history WHERE id = ?').get(id) as Record<string, unknown> | undefined;
     return row ? rowToHistory(row) : undefined;
+  }
+
+  setHistoryFavorite(id: number, favorited: boolean): TaskHistory | undefined {
+    const history = this.getHistory(id);
+    if (!history) return undefined;
+    const favoritedAt = favorited ? new Date().toISOString() : null;
+    this.db.prepare(`
+      UPDATE task_history
+      SET favorited = ?, favorited_at = ?
+      WHERE id = ?
+    `).run(favorited ? 1 : 0, favoritedAt, id);
+    return this.getHistory(id);
   }
 
   deleteHistory(id: number): { deletedHistory: number; deletedEvents: number } {
@@ -518,7 +550,9 @@ function rowToHistory(row: Record<string, unknown>): TaskHistory {
     endedAt: nullableString(row.ended_at),
     durationMs: nullableNumber(row.duration_ms),
     finalStatus: row.final_status as TaskHistory['finalStatus'],
-    resultSummary: nullableString(row.result_summary)
+    resultSummary: nullableString(row.result_summary),
+    favorited: Number(row.favorited ?? 0) === 1,
+    favoritedAt: nullableString(row.favorited_at)
   };
 }
 

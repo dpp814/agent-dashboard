@@ -1130,6 +1130,46 @@ input {
   box-shadow: 0 1px 2px rgb(23 32 38 / 0.08);
 }
 
+.historyFavoriteFilter {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.historyFavoriteFilter button {
+  height: 28px;
+  min-width: 58px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.historyFavoriteFilter button svg {
+  flex: none;
+  color: var(--warning-strong);
+}
+
+.historyFavoriteFilter button.active {
+  color: var(--warning-text);
+  background: color-mix(in srgb, var(--warning-bg) 72%, var(--surface));
+  box-shadow: 0 1px 2px rgb(23 32 38 / 0.08);
+}
+
+.historyFavoriteFilter button.active svg {
+  color: var(--warning-text);
+}
+
 .searchBox {
   height: 36px;
   display: flex;
@@ -1396,6 +1436,17 @@ td {
 .historyCopyButton:hover:not(:disabled) {
   color: var(--text-strong);
   border-color: var(--border-strong);
+}
+
+.historyFavoriteButton.active,
+.historyFavoriteButton[aria-pressed='true'] {
+  color: var(--warning-text);
+  border-color: color-mix(in srgb, var(--warning-strong) 40%, var(--border-soft));
+  background: color-mix(in srgb, var(--warning-bg) 70%, var(--surface));
+}
+
+.historyFavoriteRow td {
+  background: color-mix(in srgb, var(--warning-bg) 28%, transparent);
 }
 
 .historySessionButton {
@@ -2021,12 +2072,14 @@ td {
 
   .historyTools,
   .historyProviderFilter,
+  .historyFavoriteFilter,
   .searchBox,
   .searchBox input {
     width: 100%;
   }
 
-  .historyProviderFilter button {
+  .historyProviderFilter button,
+  .historyFavoriteFilter button {
     flex: 1;
   }
 

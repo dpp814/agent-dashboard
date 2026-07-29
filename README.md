@@ -8,7 +8,7 @@
 - 实时状态看板：修行、候令、待言、圆满、异象、坐化
 - 授令阁：集中展示授权请求，Claude 与 Grok 可在 Web UI 里准行/驳回
 - 自动授令：可选开关，开启后自动准行 Claude 与 Grok 的授权请求（有风险，见 UI Guide 说明）
-- 卷宗：保存近期任务历史，支持搜索、分页、会话精确筛选、详情查看、恢复命令复制和会话删除
+- 卷宗：保存近期任务历史，支持搜索、分页、来源筛选、收藏筛选、会话精确筛选、详情查看、恢复命令复制和会话删除
 - 道友图鉴：统计通知头像使用次数，按修仙境界升级，并支持折叠展示
 - 浏览器通知：任务圆满、任务异常、等待输入、待授权，支持传音/静默提示音切换
 - 三套主题：宣纸、夜墨、竹青
@@ -304,7 +304,13 @@ Task history table:
 - 归档: end time
 - 耗时: duration
 
-Search filters task, provider, session id, agent id, final status, and result summary.
+Toolbar filters:
+
+- Provider filter: single-select among `全部` / `Claude` / `Codex` / `Grok`
+- Favorite filter: independent toggle between the provider filter and search box; when active, only favorited history rows are queried
+- Search: filters task, provider, session id, agent id, final status, and result summary
+
+Provider, favorite, search, session, and pagination filters can be combined. Favorite state is stored in SQLite and survives refresh.
 
 Row actions:
 
@@ -312,6 +318,7 @@ Row actions:
 - Copy task: copy the prompt/result summary used for display
 - Copy resume command: copy `claude --resume ...`, `codex resume ...`, or `grok --resume ...` when available
 - Session history: filter history by exact session id while keeping the current provider filter
+- Favorite / unfavorite: star toggle at the end of the action group; persists `favorited` on the history row
 - Delete session: remove all task history and events for the session after confirmation
 
 ## Data Storage
@@ -333,7 +340,7 @@ Stored data:
 - agent snapshots
 - raw hook/discovery events
 - approval requests
-- task history
+- task history, including favorite flags
 
 Change data directory:
 
@@ -352,14 +359,29 @@ rm -rf .agent-monitor
 ### Snapshot
 
 ```http
-GET /api/snapshot?search=&limit=50&offset=0&provider=all&sessionId=
+GET /api/snapshot?search=&limit=50&offset=0&provider=all&sessionId=&favorites=0
 ```
+
+Query notes:
+
+- `provider`: `all` | `claude` | `codex` | `grok`
+- `favorites=1`: only return favorited history rows
+- `sessionId`: exact session filter via `provider_instance_id`
 
 ### History Detail
 
 ```http
 GET /api/history/:id
 ```
+
+### History Favorite
+
+```http
+POST /api/history/:id/favorite?favorited=1
+POST /api/history/:id/favorite?favorited=0
+```
+
+Toggles favorite state on a history row and broadcasts the updated history item over WebSocket.
 
 ### History Deletion
 

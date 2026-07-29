@@ -24,7 +24,8 @@ export function createRouter(store: StateStore, ws: WebSocketHub) {
           Number(url.searchParams.get('limit') ?? 50),
           Number(url.searchParams.get('offset') ?? 0),
           historyProviderFilter(url.searchParams.get('provider')),
-          url.searchParams.get('sessionId') ?? ''
+          url.searchParams.get('sessionId') ?? '',
+          url.searchParams.get('favorites') === '1'
         ));
         return;
       }
@@ -45,6 +46,31 @@ export function createRouter(store: StateStore, ws: WebSocketHub) {
           return;
         }
         json(res, detail);
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname.match(/^\/api\/history\/\d+\/favorite$/)) {
+        if (!authorized(req, url)) {
+          json(res, { error: 'unauthorized' }, 401);
+          return;
+        }
+        const id = Number(url.pathname.split('/')[3]);
+        if (!Number.isInteger(id) || id < 1) {
+          json(res, { error: 'invalid history id' }, 400);
+          return;
+        }
+        const favoritedParam = url.searchParams.get('favorited');
+        if (favoritedParam !== '0' && favoritedParam !== '1') {
+          json(res, { error: 'invalid favorited value' }, 400);
+          return;
+        }
+        const history = store.setHistoryFavorite(id, favoritedParam === '1');
+        if (!history) {
+          json(res, { error: 'history not found' }, 404);
+          return;
+        }
+        ws.broadcast({ type: 'history', payload: history });
+        json(res, history);
         return;
       }
 

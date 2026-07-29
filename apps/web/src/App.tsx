@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Bell, Check, ChevronDown, Clock, Copy, Eye, Flame, History, Layers3, Moon, Play, Search, ShieldAlert, Sparkles, Sun, Terminal, Trash2, Volume2, VolumeX, X, Zap } from 'lucide-react';
+import { Bell, Check, ChevronDown, Clock, Copy, Eye, Flame, History, Layers3, Moon, Play, Search, ShieldAlert, Sparkles, Star, Sun, Terminal, Trash2, Volume2, VolumeX, X, Zap } from 'lucide-react';
 import type { AgentState, AgentStatus, ApprovalRequest, DashboardSnapshot, TaskHistory, WsMessage } from '@agent-monitor/shared';
-import { connectWs, deleteHistorySession, fetchHistoryDetail, fetchSnapshot, resolveApproval, type HistoryDetail, type HistoryProviderFilter } from './api';
+import { connectWs, deleteHistorySession, fetchHistoryDetail, fetchSnapshot, resolveApproval, setHistoryFavorite, type HistoryDetail, type HistoryProviderFilter } from './api';
 
 type NotificationPermissionState = NotificationPermission | 'unsupported';
 type ThemeMode = 'day' | 'night' | 'eye';
@@ -70,6 +70,7 @@ export function App() {
   const [search, setSearch] = useState('');
   const [historySessionId, setHistorySessionId] = useState('');
   const [historyProvider, setHistoryProvider] = useState<HistoryProviderFilter>('all');
+  const [historyFavoritesOnly, setHistoryFavoritesOnly] = useState(false);
   const [historyPage, setHistoryPage] = useState(0);
   const [historyPageSize, setHistoryPageSize] = useState(initialHistoryPageSize);
   const [historyPageInput, setHistoryPageInput] = useState('1');
@@ -88,12 +89,20 @@ export function App() {
   const notifiedApprovalIds = useRef(new Set<string>());
   const transientApprovalTimers = useRef(new Map<string, number>());
   const highlightedNotificationIconTimer = useRef<number | undefined>(undefined);
-  const historyQuery = useRef<{ search: string; page: number; pageSize: number; provider: HistoryProviderFilter; sessionId: string }>({
+  const historyQuery = useRef<{
+    search: string;
+    page: number;
+    pageSize: number;
+    provider: HistoryProviderFilter;
+    sessionId: string;
+    favoritesOnly: boolean;
+  }>({
     search: '',
     page: 0,
     pageSize: historyPageSize,
     provider: 'all',
-    sessionId: ''
+    sessionId: '',
+    favoritesOnly: false
   });
   const visibleApprovals = useMemo(
     () => snapshot.approvals
@@ -162,14 +171,21 @@ export function App() {
   }, [previewIcon]);
 
   useEffect(() => {
-    historyQuery.current = { search, page: historyPage, pageSize: historyPageSize, provider: historyProvider, sessionId: historySessionId };
+    historyQuery.current = {
+      search,
+      page: historyPage,
+      pageSize: historyPageSize,
+      provider: historyProvider,
+      sessionId: historySessionId,
+      favoritesOnly: historyFavoritesOnly
+    };
     const timer = window.setTimeout(() => {
-      fetchSnapshot(search, historyPageSize, historyPage * historyPageSize, historyProvider, historySessionId)
+      fetchSnapshot(search, historyPageSize, historyPage * historyPageSize, historyProvider, historySessionId, historyFavoritesOnly)
         .then((next) => setSnapshot((current) => mergeHistorySnapshot(current, next)))
         .catch(() => {});
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [search, historyPage, historyPageSize, historyProvider, historySessionId]);
+  }, [search, historyPage, historyPageSize, historyProvider, historySessionId, historyFavoritesOnly]);
 
   useEffect(() => {
     setHistoryPageInput(String(historyPage + 1));
@@ -301,22 +317,14 @@ export function App() {
       return;
     }
     if (message.type === 'history') {
-      const { search: currentSearch, page, pageSize, provider, sessionId } = historyQuery.current;
+      const { search: currentSearch, page, pageSize, provider, sessionId, favoritesOnly } = historyQuery.current;
+      const filtered = Boolean(currentSearch.trim() || provider !== 'all' || sessionId || favoritesOnly);
       maybeNotifyHistory(message.payload, highlightNotificationIcon);
-      if (currentSearch.trim() || provider !== 'all' || sessionId) {
-        fetchSnapshot(currentSearch, pageSize, page * pageSize, provider, sessionId)
+      setSnapshot((current) => applyHistoryUpdate(current, message.payload, page, pageSize, !filtered, favoritesOnly));
+      if (filtered) {
+        fetchSnapshot(currentSearch, pageSize, page * pageSize, provider, sessionId, favoritesOnly)
           .then((next) => setSnapshot((current) => mergeHistorySnapshot(current, next)))
           .catch(() => {});
-      } else {
-        setSnapshot((current) => ({
-          ...current,
-          history: page === 0
-            ? [message.payload, ...current.history.filter((item) => item.id !== message.payload.id)].slice(0, pageSize)
-            : current.history,
-          historyTotal: current.history.some((item) => item.id === message.payload.id)
-            ? current.historyTotal
-            : current.historyTotal + 1
-        }));
       }
       return;
     }
@@ -349,6 +357,26 @@ export function App() {
     }
   }
 
+  async function onToggleHistoryFavorite(row: TaskHistory) {
+    try {
+      const query = historyQuery.current;
+      const updated = await setHistoryFavorite(row.id, !row.favorited);
+      setSnapshot((current) => applyHistoryUpdate(
+        current,
+        updated,
+        query.page,
+        query.pageSize,
+        false,
+        query.favoritesOnly
+      ));
+      setHistoryDetail((current) => current?.history.id === updated.id
+        ? { ...current, history: updated }
+        : current);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   async function onDeleteHistorySession(sessionId: string): Promise<boolean> {
     try {
       await deleteHistorySession(sessionId);
@@ -357,11 +385,25 @@ export function App() {
       const nextSearch = clearSessionFilter ? '' : query.search;
       const nextSessionId = clearSessionFilter ? '' : query.sessionId;
       let nextPage = clearSessionFilter ? 0 : query.page;
-      let next = await fetchSnapshot(nextSearch, query.pageSize, nextPage * query.pageSize, query.provider, nextSessionId);
+      let next = await fetchSnapshot(
+        nextSearch,
+        query.pageSize,
+        nextPage * query.pageSize,
+        query.provider,
+        nextSessionId,
+        query.favoritesOnly
+      );
       const lastPage = Math.max(0, Math.ceil(next.historyTotal / query.pageSize) - 1);
       if (nextPage > lastPage) {
         nextPage = lastPage;
-        next = await fetchSnapshot(nextSearch, query.pageSize, nextPage * query.pageSize, query.provider, nextSessionId);
+        next = await fetchSnapshot(
+          nextSearch,
+          query.pageSize,
+          nextPage * query.pageSize,
+          query.provider,
+          nextSessionId,
+          query.favoritesOnly
+        );
       }
       if (clearSessionFilter) {
         setSearch('');
@@ -522,6 +564,21 @@ export function App() {
                   </button>
                 ))}
               </div>
+              <div className="historyFavoriteFilter" role="group" aria-label="收藏筛选">
+                <button
+                  className={historyFavoritesOnly ? 'active' : ''}
+                  type="button"
+                  aria-pressed={historyFavoritesOnly}
+                  title={historyFavoritesOnly ? '取消收藏筛选' : '只看收藏'}
+                  onClick={() => {
+                    setHistoryFavoritesOnly((current) => !current);
+                    setHistoryPage(0);
+                  }}
+                >
+                  <Star size={14} fill={historyFavoritesOnly ? 'currentColor' : 'none'} />
+                  <span>收藏</span>
+                </button>
+              </div>
               <label className="searchBox">
                 <Search size={16} />
                 <input
@@ -554,6 +611,7 @@ export function App() {
         <HistoryTable
           rows={snapshot.history}
           onShowDetail={onShowHistoryDetail}
+          onToggleFavorite={onToggleHistoryFavorite}
           onShowSessionHistory={(row) => {
             if (!row.providerInstanceId) return;
             setHistorySessionId(row.providerInstanceId);
@@ -715,9 +773,10 @@ function ApprovalCard({ approval, onResolve }: { approval: ApprovalRequest; onRe
   );
 }
 
-function HistoryTable({ rows, onShowDetail, onShowSessionHistory }: {
+function HistoryTable({ rows, onShowDetail, onToggleFavorite, onShowSessionHistory }: {
   rows: TaskHistory[];
   onShowDetail: (row: TaskHistory) => void;
+  onToggleFavorite: (row: TaskHistory) => void;
   onShowSessionHistory: (row: TaskHistory) => void;
 }) {
   const [copyFeedback, setCopyFeedback] = useState<{ id: number; target: 'task' | 'resume'; status: 'copied' | 'failed' }>();
@@ -763,8 +822,9 @@ function HistoryTable({ rows, onShowDetail, onShowSessionHistory }: {
             const resumeCommand = historyResumeCommand(row);
             const taskFeedback = copyFeedback?.id === row.id && copyFeedback.target === 'task' ? copyFeedback.status : undefined;
             const resumeFeedback = copyFeedback?.id === row.id && copyFeedback.target === 'resume' ? copyFeedback.status : undefined;
+            const favorited = Boolean(row.favorited);
             return (
-              <tr key={row.id}>
+              <tr key={row.id} className={favorited ? 'historyFavoriteRow' : undefined}>
                 <td><HistoryProviderIdentity provider={row.provider} /></td>
                 <td className="historyTaskCell" title={taskText}>
                   <div className="historyTaskContent">
@@ -808,6 +868,16 @@ function HistoryTable({ rows, onShowDetail, onShowSessionHistory }: {
                         onClick={() => onShowSessionHistory(row)}
                       >
                         <History size={14} />
+                      </button>
+                      <button
+                        className={`historyCopyButton historyFavoriteButton${favorited ? ' active' : ''}`}
+                        type="button"
+                        title={favorited ? '取消收藏' : '收藏'}
+                        aria-label={favorited ? '取消收藏' : '收藏'}
+                        aria-pressed={favorited}
+                        onClick={() => onToggleFavorite(row)}
+                      >
+                        <Star size={14} fill={favorited ? 'currentColor' : 'none'} />
                       </button>
                     </div>
                   </div>
@@ -1405,6 +1475,41 @@ function mergeHistorySnapshot(current: DashboardSnapshot, next: DashboardSnapsho
     ...current,
     history: next.history,
     historyTotal: next.historyTotal ?? next.history.length
+  };
+}
+
+function applyHistoryUpdate(
+  current: DashboardSnapshot,
+  row: TaskHistory,
+  page: number,
+  pageSize: number,
+  allowInsert = true,
+  favoritesOnly = false
+): DashboardSnapshot {
+  const inHistory = current.history.some((item) => item.id === row.id);
+  if (favoritesOnly && !row.favorited) {
+    if (!inHistory) return current;
+    return {
+      ...current,
+      history: current.history.filter((item) => item.id !== row.id),
+      historyTotal: Math.max(0, current.historyTotal - 1),
+      updatedAt: new Date().toISOString()
+    };
+  }
+  if (favoritesOnly && !inHistory && !allowInsert) {
+    return current;
+  }
+  const history = inHistory
+    ? current.history.map((item) => item.id === row.id ? row : item)
+    : allowInsert && page === 0 && (!favoritesOnly || row.favorited)
+      ? [row, ...current.history].slice(0, pageSize)
+      : current.history;
+  const inserted = !inHistory && history.some((item) => item.id === row.id);
+  return {
+    ...current,
+    history,
+    historyTotal: inserted ? current.historyTotal + 1 : current.historyTotal,
+    updatedAt: new Date().toISOString()
   };
 }
 

@@ -1,4 +1,4 @@
-import type { ApprovalRequest, DashboardSnapshot, HistoryDetail, HistoryProviderFilter, WsMessage } from '@agent-monitor/shared';
+import type { ApprovalRequest, DashboardSnapshot, HistoryDetail, HistoryProviderFilter, TaskHistory, WsMessage } from '@agent-monitor/shared';
 
 const apiBase = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8787';
 const wsBase = apiBase.replace(/^http/, 'ws');
@@ -6,7 +6,14 @@ const token = import.meta.env.VITE_AGENT_MONITOR_TOKEN ?? '';
 
 const authHeaders = token ? { authorization: `Bearer ${token}` } : undefined;
 
-export async function fetchSnapshot(search = '', limit = 50, offset = 0, provider: HistoryProviderFilter = 'all', sessionId = ''): Promise<DashboardSnapshot> {
+export async function fetchSnapshot(
+  search = '',
+  limit = 50,
+  offset = 0,
+  provider: HistoryProviderFilter = 'all',
+  sessionId = '',
+  favoritesOnly = false
+): Promise<DashboardSnapshot> {
   const params = new URLSearchParams({
     search,
     limit: String(limit),
@@ -14,6 +21,7 @@ export async function fetchSnapshot(search = '', limit = 50, offset = 0, provide
     provider
   });
   if (sessionId) params.set('sessionId', sessionId);
+  if (favoritesOnly) params.set('favorites', '1');
   const response = await fetch(`${apiBase}/api/snapshot?${params.toString()}`, { headers: authHeaders });
   if (!response.ok) throw new Error(`Snapshot failed: ${response.status}`);
   return response.json();
@@ -35,6 +43,16 @@ export interface DeleteHistoryResult {
 export async function deleteHistory(id: number): Promise<DeleteHistoryResult> {
   const response = await fetch(`${apiBase}/api/history/${id}`, { method: 'DELETE', headers: authHeaders });
   if (!response.ok) throw new Error(`History delete failed: ${response.status}`);
+  return response.json();
+}
+
+export async function setHistoryFavorite(id: number, favorited: boolean): Promise<TaskHistory> {
+  const params = new URLSearchParams({ favorited: favorited ? '1' : '0' });
+  const response = await fetch(`${apiBase}/api/history/${id}/favorite?${params}`, {
+    method: 'POST',
+    headers: authHeaders
+  });
+  if (!response.ok) throw new Error(`History favorite failed: ${response.status}`);
   return response.json();
 }
 

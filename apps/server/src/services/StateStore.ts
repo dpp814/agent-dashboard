@@ -101,7 +101,14 @@ export class StateStore {
     return { agent, approval, completed, history };
   }
 
-  snapshot(search = '', historyLimit = 50, historyOffset = 0, historyProvider: HistoryProviderFilter = 'all', historySessionId = ''): DashboardSnapshot {
+  snapshot(
+    search = '',
+    historyLimit = 50,
+    historyOffset = 0,
+    historyProvider: HistoryProviderFilter = 'all',
+    historySessionId = '',
+    favoritesOnly = false
+  ): DashboardSnapshot {
     this.expireOldProviderApprovals();
     this.clearOrphanedApprovalAgents();
     const agents = [...this.agents.values()];
@@ -113,8 +120,8 @@ export class StateStore {
         .map((agent, _, visibleAgents) => ({ ...agent, name: displayName(agent, visibleAgents) }))
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
       approvals: this.db.listApprovals(),
-      history: this.db.listHistory(search, historyProvider, historyLimit, historyOffset, historySessionId),
-      historyTotal: this.db.countHistory(search, historyProvider, historySessionId),
+      history: this.db.listHistory(search, historyProvider, historyLimit, historyOffset, historySessionId, favoritesOnly),
+      historyTotal: this.db.countHistory(search, historyProvider, historySessionId, favoritesOnly),
       stats: this.db.countTodayHistory(...todayRange()),
       updatedAt: new Date().toISOString()
     };
@@ -123,6 +130,10 @@ export class StateStore {
   historyDetail(id: number): HistoryDetail | undefined {
     const history = this.db.getHistory(id);
     return history ? { history, events: this.db.listEventsForHistory(history) } : undefined;
+  }
+
+  setHistoryFavorite(id: number, favorited: boolean): TaskHistory | undefined {
+    return this.db.setHistoryFavorite(id, favorited);
   }
 
   deleteHistory(id: number): { deletedHistory: number; deletedEvents: number } {
