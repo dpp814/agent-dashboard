@@ -86,6 +86,7 @@ export class AppDatabase {
     `);
     this.backfillZeroDurationHistory();
     this.backfillMissingCompletionHistory();
+    this.dedupeHistoryByTaskStart();
   }
 
   upsertAgent(agent: AgentStatus): void {
@@ -467,6 +468,18 @@ export class AppDatabase {
     `);
   }
 
+  // Keep the earliest completion per user turn; later shutdown/end_turn echoes are dropped.
+  private dedupeHistoryByTaskStart(): void {
+    this.db.exec(`
+      DELETE FROM task_history
+      WHERE id NOT IN (
+        SELECT MIN(id)
+        FROM task_history
+        GROUP BY agent_id, started_at
+      );
+    `);
+  }
+
   private backfillMissingCompletionHistory(): void {
     const rows = this.db.prepare(`
       SELECT e.id, e.agent_id, e.provider, e.provider_instance_id, e.type, e.ts, e.payload_json
@@ -492,10 +505,10 @@ export class AppDatabase {
       const payload = parseJsonObject(row.payload_json);
       const started = this.findLatestTaskStart(row.agent_id, row.ts);
       if (!started) continue;
-      // Ctrl+Q emits a second stop(reason=shutdown) after end_turn; keep only mid-turn quits.
-      if (String(payload.reason ?? '') === 'shutdown' && this.hasHistoryForTaskStart(row.agent_id, started.startedAt)) {
-        continue;
-      }
+      // One user turn -> one history row (skip end_turn+shutdown echoes).
+      if (this.hasHistoryForTaskStart(row.agent_id, started.startedAt)) continue;
+      // Orphan shutdown after the turn already completed has no open task to recover.
+      if (String(payload.reason ?? '') === 'shutdown') continue;
       const resultSummary = nullableString(
         payload.last_assistant_message ?? payload.result ?? payload.error ?? payload.message
       );

@@ -71,13 +71,20 @@ export class StateStore {
       this.resolveMatchingProviderApproval(event, 'approved');
     }
 
+    const payload = event.payload as Record<string, unknown>;
+    const hasActiveTask = this.activeTasks.has(agent.id);
+    // Grok Ctrl+Q emits stop(reason=shutdown) after end_turn; idle_prompt may also
+    // flip the agent back to waiting_input. Only record shutdown when a turn is still open.
+    const isOrphanShutdown = event.type === 'finished' &&
+      String(payload.reason ?? '') === 'shutdown' &&
+      !hasActiveTask;
     const completed = ['finished', 'error'].includes(event.type) &&
+      !isOrphanShutdown &&
       !this.db.hasHistoryForCompletion(agent.id, event.ts) &&
-      (isCompletingActiveAgent(current, this.activeTasks.has(agent.id)) || isCompletableCompletionEvent(event));
+      (isCompletingActiveAgent(current, hasActiveTask) || isCompletableCompletionEvent(event));
     let history: TaskHistory | undefined;
     if (completed) {
       const endedAt = event.ts;
-      const payload = event.payload as Record<string, unknown>;
       const eventTask = getTask(payload, endedAt);
       const activeTask = this.activeTasks.get(agent.id) ??
         taskStartFromTranscript(payload, endedAt) ??
@@ -85,17 +92,20 @@ export class StateStore {
       const fallbackStartedAt = earlierIso(current.activeSince, current.startedAt) ?? endedAt;
       const activeStartedAt = activeTask?.startedAt ?? endedAt;
       const startedAt = activeStartedAt === endedAt ? fallbackStartedAt : activeStartedAt;
-      history = this.db.insertHistory({
-        agentId: agent.id,
-        provider: agent.provider,
-        providerInstanceId: agent.providerInstanceId,
-        task: cleanTaskText(eventTask ?? activeTask?.task ?? agent.task),
-        startedAt,
-        endedAt,
-        durationMs: durationMs(startedAt, endedAt),
-        finalStatus: event.type === 'finished' ? 'finished' : agent.status,
-        resultSummary: agent.lastResult
-      });
+      // One user turn (startedAt) maps to one history row; ignore later duplicate stops.
+      if (!this.db.hasHistoryForTaskStart(agent.id, startedAt)) {
+        history = this.db.insertHistory({
+          agentId: agent.id,
+          provider: agent.provider,
+          providerInstanceId: agent.providerInstanceId,
+          task: cleanTaskText(eventTask ?? activeTask?.task ?? agent.task),
+          startedAt,
+          endedAt,
+          durationMs: durationMs(startedAt, endedAt),
+          finalStatus: event.type === 'finished' ? 'finished' : agent.status,
+          resultSummary: agent.lastResult
+        });
+      }
       this.activeTasks.delete(agent.id);
     }
 
@@ -346,8 +356,7 @@ function isCompletingActiveAgent(agent: AgentStatus, hasActiveTask: boolean): bo
 function isCompletableCompletionEvent(event: AgentEvent): boolean {
   if (event.provider !== 'claude' && event.provider !== 'codex' && event.provider !== 'grok') return false;
   const payload = event.payload as Record<string, unknown>;
-  // Ctrl+Q / session exit emits stop reason=shutdown after the turn already ended.
-  // Only record history for shutdown when there is still an active task (mid-turn quit).
+  // Shutdown stops are handled via activeTasks only (see isOrphanShutdown).
   if (String(payload.reason ?? '') === 'shutdown') return false;
   return Boolean(
     getTask(payload, event.ts) ||
