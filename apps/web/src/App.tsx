@@ -6,6 +6,8 @@ import type { AgentState, AgentStatus, ApprovalRequest, DashboardSnapshot, TaskH
 import { connectWs, deleteHistory, deleteHistorySession, fetchHistoryDetail, fetchSnapshot, resolveApproval, setHistoryFavorite, type HistoryDetail, type HistoryProviderFilter } from './api';
 
 type NotificationPermissionState = NotificationPermission | 'unsupported';
+type NotificationRuleKey = 'approval' | 'finished' | 'error' | 'waitingInput';
+type NotificationRules = Record<NotificationRuleKey, boolean>;
 type ThemeMode = 'day' | 'night' | 'eye';
 type NotificationIconUsage = {
   name: string;
@@ -51,7 +53,15 @@ const notificationIconUsageStorageKey = 'agent-monitor-notification-icon-usage';
 const notificationIconUsageEvent = 'agent-monitor-notification-icon-usage-change';
 const iconUsageExpandedStorageKey = 'agent-monitor-icon-usage-expanded';
 const notificationSoundStorageKey = 'agent-monitor-notification-sound';
+const notificationRulesStorageKey = 'agent-monitor-notification-rules';
 const autoApproveStorageKey = 'agent-monitor-auto-approve';
+const notificationRuleOrder: NotificationRuleKey[] = ['approval', 'finished', 'error', 'waitingInput'];
+const notificationRuleLabels: Record<NotificationRuleKey, string> = {
+  approval: '待授令',
+  finished: '事务圆满',
+  error: '事务异象',
+  waitingInput: '待传言'
+};
 let notificationAudioContext: AudioContext | undefined;
 const cultivationRanks = ['炼气', '筑基', '结丹', '元婴', '化神', '炼虚', '合体', '大乘', '真仙', '金仙', '太乙', '大罗', '道祖'];
 const notificationIconPaths = [
@@ -83,10 +93,12 @@ export function App() {
   const [previewIcon, setPreviewIcon] = useState<NotificationIconUsage>();
   const [theme, setTheme] = useState<ThemeMode>(() => initialTheme());
   const [notificationSoundEnabled, setNotificationSoundEnabled] = useState(() => initialNotificationSoundEnabled());
+  const [notificationRules, setNotificationRules] = useState<NotificationRules>(() => readNotificationRules());
   const [autoApproveEnabled, setAutoApproveEnabled] = useState(() => initialAutoApproveEnabled());
   const [hiddenApprovalIds, setHiddenApprovalIds] = useState<Set<string>>(() => new Set());
   const autoApprovingIds = useRef(new Set<string>());
   const notifiedApprovalIds = useRef(new Set<string>());
+  const notificationRulesMounted = useRef(false);
   const transientApprovalTimers = useRef(new Map<string, number>());
   const highlightedNotificationIconTimer = useRef<number | undefined>(undefined);
   const historyQuery = useRef<{
@@ -129,6 +141,24 @@ export function App() {
   useEffect(() => {
     window.localStorage.setItem(notificationSoundStorageKey, notificationSoundEnabled ? '1' : '0');
   }, [notificationSoundEnabled]);
+
+  // Only persist real edits: writing on mount would let a long-open tab push its
+  // stale rules back over what another tab just saved.
+  useEffect(() => {
+    if (notificationRulesMounted.current) {
+      window.localStorage.setItem(notificationRulesStorageKey, JSON.stringify(notificationRules));
+      return;
+    }
+    notificationRulesMounted.current = true;
+  }, [notificationRules]);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === notificationRulesStorageKey) setNotificationRules(readNotificationRules());
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   useEffect(() => {
     window.localStorage.setItem(iconUsageExpandedStorageKey, iconUsageExpanded ? '1' : '0');
@@ -240,6 +270,10 @@ export function App() {
     void unlockNotificationSound();
     const permission = await Notification.requestPermission();
     setNotificationPermission(permission);
+  }
+
+  function onToggleNotificationRule(rule: NotificationRuleKey) {
+    setNotificationRules((current) => ({ ...current, [rule]: !current[rule] }));
   }
 
   function onCycleTheme() {
@@ -462,7 +496,12 @@ export function App() {
           <h1>AI修仙传</h1>
         </div>
         <div className="topbarActions">
-          <NotificationButton permission={notificationPermission} onRequest={onRequestNotifications} />
+          <NotificationButton
+            permission={notificationPermission}
+            rules={notificationRules}
+            onRequest={onRequestNotifications}
+            onToggleRule={onToggleNotificationRule}
+          />
           <SoundButton enabled={notificationSoundEnabled} onToggle={onToggleNotificationSound} />
           <ThemeButton theme={theme} onCycle={onCycleTheme} />
           <span className={`connection ${connected ? 'ok' : 'bad'}`}>{connected ? '已出关' : '闭关中'}</span>
@@ -695,20 +734,74 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: stri
   );
 }
 
-function NotificationButton({ permission, onRequest }: { permission: NotificationPermissionState; onRequest: () => void }) {
-  const disabled = permission === 'denied' || permission === 'unsupported';
+function NotificationButton({ permission, rules, onRequest, onToggleRule }: {
+  permission: NotificationPermissionState;
+  rules: NotificationRules;
+  onRequest: () => void;
+  onToggleRule: (rule: NotificationRuleKey) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const title = notificationTitle(permission);
+  const mutedCount = notificationRuleOrder.filter((rule) => !rules[rule]).length;
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [open]);
+
   return (
-    <button
-      className={`iconButton notificationButton ${permission}`}
-      title={title}
-      aria-label={title}
-      disabled={disabled}
-      onClick={() => void onRequest()}
-    >
-      <Bell size={18} />
-      <span>{notificationLabel(permission)}</span>
-    </button>
+    <div className="notificationMenu" ref={menuRef}>
+      <button
+        className={`iconButton notificationButton ${permission} ${open ? 'isOpen' : ''}`}
+        title={title}
+        aria-label={title}
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-controls="notification-rules"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Bell size={18} />
+        <span>{notificationLabel(permission)}</span>
+        {mutedCount ? <span className="notificationMutedCount">{mutedCount}</span> : null}
+        <ChevronDown size={14} className={`notificationCaret ${open ? 'isOpen' : ''}`} />
+      </button>
+      {open ? (
+        <div className="notificationPopover" id="notification-rules" role="group" aria-label="弹窗提醒">
+          <p className="notificationPopoverNote">关闭后此类事件不再弹出系统卡片，授令阁照常列出待批法旨</p>
+          <div className="notificationRuleList">
+            {notificationRuleOrder.map((rule) => (
+              <button
+                key={rule}
+                className={`notificationRule ${rules[rule] ? 'isEnabled' : ''}`}
+                type="button"
+                aria-pressed={rules[rule]}
+                onClick={() => onToggleRule(rule)}
+              >
+                <span>{notificationRuleLabels[rule]}</span>
+                <span className="notificationRuleState">{rules[rule] ? '弹' : '静'}</span>
+              </button>
+            ))}
+          </div>
+          <div className="notificationPermissionNote">
+            <span>{notificationPermissionNote(permission)}</span>
+            {permission === 'default' ? (
+              <button type="button" onClick={() => void onRequest()}>开启灵讯</button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1802,26 +1895,29 @@ function fullResultText(value?: string) {
 }
 
 function maybeNotify(agent: AgentStatus, onClick?: (icon: string) => void) {
-  if (agent.status === 'finished') notify(`${agent.name} 已圆满`, agent.task || '事务已毕', completionNotificationKey(agent.id, agent.status, agent.finishedAt, agent.lastResult), onClick);
-  if (agent.status === 'error') notify(`${agent.name} 生异象`, agent.lastResult || '行事未成', completionNotificationKey(agent.id, agent.status, agent.finishedAt, agent.lastResult), onClick);
-  if (agent.status === 'waiting_input') notify(`${agent.name} 待传言`, agent.waitingFor || '尚需应答', notificationKey(agent), onClick);
+  if (agent.status === 'finished') notify('finished', `${agent.name} 已圆满`, agent.task || '事务已毕', completionNotificationKey(agent.id, agent.status, agent.finishedAt, agent.lastResult), onClick);
+  if (agent.status === 'error') notify('error', `${agent.name} 生异象`, agent.lastResult || '行事未成', completionNotificationKey(agent.id, agent.status, agent.finishedAt, agent.lastResult), onClick);
+  if (agent.status === 'waiting_input') notify('waitingInput', `${agent.name} 待传言`, agent.waitingFor || '尚需应答', notificationKey(agent), onClick);
 }
 
 function maybeNotifyHistory(row: TaskHistory, onClick?: (icon: string) => void) {
-  if (row.finalStatus === 'finished') notify(`${providerLabel(row.provider)} 事务已圆满`, row.task || '事务已毕', completionNotificationKey(row.agentId, row.finalStatus, row.endedAt, row.resultSummary), onClick);
-  if (row.finalStatus === 'error') notify(`${providerLabel(row.provider)} 事务生异象`, row.resultSummary || '行事未成', completionNotificationKey(row.agentId, row.finalStatus, row.endedAt, row.resultSummary), onClick);
+  if (row.finalStatus === 'finished') notify('finished', `${providerLabel(row.provider)} 事务已圆满`, row.task || '事务已毕', completionNotificationKey(row.agentId, row.finalStatus, row.endedAt, row.resultSummary), onClick);
+  if (row.finalStatus === 'error') notify('error', `${providerLabel(row.provider)} 事务生异象`, row.resultSummary || '行事未成', completionNotificationKey(row.agentId, row.finalStatus, row.endedAt, row.resultSummary), onClick);
 }
 
 function notifyApproval(approval: ApprovalRequest, onClick?: (icon: string) => void) {
   if (approval.provider === 'codex') {
-    notify('Codex 候令', `${approval.summary} · 请回命令行应答`, undefined, onClick);
+    notify('approval', 'Codex 候令', `${approval.summary} · 请回命令行应答`, undefined, onClick);
     return;
   }
-  notify('使者候令', approval.summary, undefined, onClick);
+  notify('approval', '使者候令', approval.summary, undefined, onClick);
 }
 
-function notify(title: string, body: string, key?: string, onClick?: (icon: string) => void) {
+function notify(rule: NotificationRuleKey, title: string, body: string, key?: string, onClick?: (icon: string) => void) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  // Checked before the dedupe key is consumed, so muting a rule now does not
+  // swallow the same notification once the rule is turned back on.
+  if (!isNotificationRuleEnabled(rule)) return;
   if (key && notifiedAgentEventKeys.has(key)) return;
   if (key) notifiedAgentEventKeys.add(key);
   const icon = selectNotificationIcon();
@@ -1956,6 +2052,15 @@ function notificationLabel(permission: NotificationPermissionState): string {
   }
 }
 
+function notificationPermissionNote(permission: NotificationPermissionState): string {
+  switch (permission) {
+    case 'granted': return '灵讯已启，以上设置即时生效';
+    case 'denied': return '浏览器已禁用灵讯，任何类别都不会弹出，需在浏览器站点设置中解禁';
+    case 'unsupported': return '此浏览器不支持灵讯，任何类别都不会弹出';
+    default: return '尚未开启灵讯，开启后以上设置方可生效';
+  }
+}
+
 function notificationTitle(permission: NotificationPermissionState): string {
   switch (permission) {
     case 'granted': return '灵讯已启';
@@ -1984,6 +2089,27 @@ function initialIconUsageExpanded(): boolean {
 
 function isNotificationSoundEnabled(): boolean {
   return window.localStorage.getItem(notificationSoundStorageKey) !== '0';
+}
+
+// Every rule defaults to on, so a missing key or a damaged value keeps the
+// original behaviour of notifying about everything.
+function readNotificationRules(): NotificationRules {
+  const rules: NotificationRules = { approval: true, finished: true, error: true, waitingInput: true };
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(notificationRulesStorageKey) ?? '{}') as Record<string, unknown>;
+    for (const rule of notificationRuleOrder) {
+      if (stored[rule] === false) rules[rule] = false;
+    }
+  } catch {
+    // Keep the defaults when the stored value is not valid JSON.
+  }
+  return rules;
+}
+
+// The websocket handler is bound once, so the notification path re-reads storage
+// instead of closing over React state, the same way the sound toggle does.
+function isNotificationRuleEnabled(rule: NotificationRuleKey): boolean {
+  return readNotificationRules()[rule];
 }
 
 function initialTheme(): ThemeMode {

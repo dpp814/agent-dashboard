@@ -208,6 +208,106 @@ input {
   border-color: var(--border-strong);
 }
 
+.notificationMenu {
+  position: relative;
+}
+
+.notificationCaret {
+  transition: transform 120ms ease-out;
+}
+
+.notificationCaret.isOpen {
+  transform: rotate(180deg);
+}
+
+.notificationMutedCount {
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  background: var(--surface-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+/* Anchored on the left: the topbar stacks below 980px, which puts the bell at the
+   far left with no room for a right-anchored panel. */
+.notificationPopover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 15;
+  width: 236px;
+  max-width: calc(100vw - 32px);
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.18);
+}
+
+.notificationPopoverNote {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.notificationRuleList {
+  display: grid;
+  gap: 6px;
+}
+
+.notificationRule {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  color: var(--text-muted);
+  background: var(--surface-muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.notificationRule.isEnabled {
+  color: var(--success-text);
+  border-color: var(--success-border);
+  background: var(--success-soft);
+}
+
+.notificationRuleState {
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.notificationPermissionNote {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.notificationPermissionNote button {
+  min-height: 28px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--text-body);
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .themeButton {
   padding: 0 10px;
 }
@@ -2105,6 +2205,15 @@ td {
 
   .historyDeleteConfirmDialog {
     padding: 18px;
+  }
+
+  /* The bell sits too far left on narrow screens for a button-anchored panel. */
+  .notificationPopover {
+    position: fixed;
+    top: auto;
+    right: 12px;
+    left: 12px;
+    width: auto;
   }
 
   .pager {

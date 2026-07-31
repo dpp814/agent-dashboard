@@ -10,7 +10,7 @@
 - 自动授令：可选开关，开启后自动准行 Claude 与 Grok 的授权请求（有风险，见 UI Guide 说明）
 - 卷宗：保存近期任务历史，支持搜索、分页、来源筛选、收藏筛选、会话精确筛选、详情查看、恢复命令复制和会话删除
 - 道友图鉴：统计通知头像使用次数，按修仙境界升级，并支持折叠展示
-- 浏览器通知：任务圆满、任务异常、等待输入、待授权，支持传音/静默提示音切换
+- 浏览器通知：任务圆满、任务异常、等待输入、待授权，四类可分别开关，支持传音/静默提示音切换
 - 三套主题：宣纸、夜墨、竹青
 - SQLite 本地存储
 - 可选 API Token 保护
@@ -235,6 +235,8 @@ Grok has no dedicated permission hook, so approvals are gated through `PreToolUs
 - `已出关`: WebSocket connected
 - `闭关中`: WebSocket disconnected
 
+顶部右侧三个控件：铃铛按钮展开弹窗提醒设置（见 [弹窗提醒设置](#弹窗提醒设置)），`传音/静默` 切换提示音，主题按钮循环三套配色。
+
 ### 诸道友
 
 Shows active agents with:
@@ -280,6 +282,23 @@ Browser notifications randomly use one of the bundled avatars. The selected avat
 The atlas can be collapsed from its header. The display preference is stored locally.
 
 The top-right `传音/静默` control toggles a short notification sound for browser notification cards.
+
+### 弹窗提醒设置
+
+The top-right bell button opens a panel that switches each notification category on or off:
+
+| 类别 | 触发时机 |
+| --- | --- |
+| `待授令` | An approval request is pending |
+| `事务圆满` | A task finished successfully |
+| `事务异象` | A task ended with an error |
+| `待传言` | An agent is waiting for input |
+
+All four default to on, so the behaviour matches earlier versions until you change something. The choice is stored in browser `localStorage` and applies immediately, with no reload needed. A muted category also loses its notification sound, while the global `传音/静默` control keeps working independently.
+
+Muting `待授令` only stops the system notification card. 授令阁 still lists pending approvals, because that panel is the only place to approve Claude and Grok requests.
+
+The panel footer shows the current browser permission state. Notifications only appear when the browser has granted permission, whatever these switches say.
 
 Cultivation ranks:
 
