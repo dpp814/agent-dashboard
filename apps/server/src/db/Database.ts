@@ -235,6 +235,16 @@ export class AppDatabase {
     return this.db.prepare('SELECT * FROM agents ORDER BY updated_at DESC').all().map(rowToAgent);
   }
 
+  // Agent rows outlive their process, so a long-lived database accumulates entries
+  // whose pid is gone. Task history is keyed separately and is left untouched.
+  deleteDeadAgents(isAlive: (pid: number) => boolean): number {
+    const rows = this.db.prepare('SELECT id, pid FROM agents WHERE pid IS NOT NULL').all() as Array<{ id: string; pid: number }>;
+    const dead = rows.filter((row) => Number.isInteger(row.pid) && !isAlive(row.pid));
+    const statement = this.db.prepare('DELETE FROM agents WHERE id = ?');
+    for (const row of dead) statement.run(row.id);
+    return dead.length;
+  }
+
   listApprovals(): ApprovalRequest[] {
     return this.db.prepare(`
       SELECT * FROM approval_requests

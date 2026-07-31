@@ -166,8 +166,11 @@ function processRowToClaudeAgent(row: ProcessRow): ClaudeAgentRow {
 }
 
 function hasLiveProcessOrTerminalState(row: ClaudeAgentRow, processRows: ClaudeAgentRow[]): boolean {
-  if (!row.pid) return true;
   if (row.state === 'done' || row.state === 'failed' || row.state === 'stopped') return true;
+  // A background session that dies stays in `claude agents` as a non-terminal row
+  // with no pid. There is nothing left to confirm it is alive, so drop it instead
+  // of surfacing a card for a process that is gone. Live sessions always report a pid.
+  if (!row.pid) return false;
   return processRows.some((processRow) => processRow.pid === row.pid);
 }
 

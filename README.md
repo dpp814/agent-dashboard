@@ -251,6 +251,8 @@ Shows active agents with:
 
 If an agent is already represented in 授令阁, the duplicate waiting card is hidden.
 
+Cards track live processes only. A session that exits stops being shown, including a background session that dies without reporting a terminal state — without a live pid there is nothing left to confirm it is running. Rows left behind by exited processes are pruned when the server starts.
+
 ### 授令阁
 
 Shows pending approvals.
@@ -361,6 +363,8 @@ Stored data:
 - approval requests
 - task history, including favorite flags
 
+Agent snapshot rows belong to a process. On startup the server deletes the ones whose pid no longer exists, so a long-running database does not accumulate an entry per session that ever ran. Task history is stored separately and this cleanup never touches it.
+
 Change data directory:
 
 ```bash
@@ -469,6 +473,21 @@ npm run hooks:install
 ```
 
 Then restart a Claude/Codex/Grok session.
+
+### Dashboard Shows Sessions That Already Exited
+
+Restart the server, which prunes agent rows whose process is gone:
+
+```bash
+npm run restart
+```
+
+Background agents are the usual source. When one dies it can stay in `claude agents --json --all` in a non-terminal state with no pid, so compare that list against the real processes:
+
+```bash
+claude agents --json --all
+ps -eo pid,args | grep claude | grep -v grep
+```
 
 ### Hooks Do Not Send Events
 

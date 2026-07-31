@@ -13,11 +13,23 @@ export class StateStore {
   }>();
 
   constructor(private db: AppDatabase) {
+    db.deleteDeadAgents(isProcessAlive);
     const expiredAgentIds = new Set(db.expirePendingApprovals('claude', new Date().toISOString()));
     for (const agentId of db.expireInvalidPendingApprovals(new Date().toISOString())) expiredAgentIds.add(agentId);
     const pendingAgentIds = new Set(db.listApprovals().map((approval) => approval.agentId));
     for (const agent of db.listAgents()) {
       if ((expiredAgentIds.has(agent.id) || !pendingAgentIds.has(agent.id)) && agent.status === 'waiting_approval') {
+        agent.status = 'idle';
+        agent.currentTool = undefined;
+        agent.waitingFor = undefined;
+        agent.activeSince = undefined;
+        agent.updatedAt = new Date().toISOString();
+        db.upsertAgent(agent);
+      }
+      // Nothing reports in across a restart, so an agent that is still marked active
+      // but carries no pid cannot be confirmed alive. Park it as idle instead of
+      // leaving a card for a process that is long gone; the next hook event revives it.
+      if (agent.pid === undefined && ['running', 'waiting_input'].includes(agent.status)) {
         agent.status = 'idle';
         agent.currentTool = undefined;
         agent.waitingFor = undefined;
@@ -290,6 +302,17 @@ export class StateStore {
 
 function providerApprovalTtlMs(): number {
   return Number(process.env.AGENT_MONITOR_CODEX_APPROVAL_TTL_MS ?? 2 * 60 * 1000);
+}
+
+// Signal 0 only performs the permission and existence check. EPERM means the
+// process is alive but owned by another user, so it must not count as dead.
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
 }
 
 function durationMs(startedAt: string, endedAt: string): number | undefined {
