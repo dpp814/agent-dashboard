@@ -656,6 +656,7 @@ export function App() {
           </div>
         <HistoryTable
           rows={snapshot.history}
+          activeSessionId={historySessionId}
           onShowDetail={onShowHistoryDetail}
           onToggleFavorite={onToggleHistoryFavorite}
           onDelete={onDeleteHistoryRow}
@@ -874,8 +875,9 @@ function ApprovalCard({ approval, onResolve }: { approval: ApprovalRequest; onRe
   );
 }
 
-function HistoryTable({ rows, onShowDetail, onToggleFavorite, onDelete, onShowSessionHistory }: {
+function HistoryTable({ rows, activeSessionId, onShowDetail, onToggleFavorite, onDelete, onShowSessionHistory }: {
   rows: TaskHistory[];
+  activeSessionId: string;
   onShowDetail: (row: TaskHistory) => void;
   onToggleFavorite: (row: TaskHistory) => void;
   onDelete: (row: TaskHistory) => Promise<boolean>;
@@ -936,6 +938,7 @@ function HistoryTable({ rows, onShowDetail, onToggleFavorite, onDelete, onShowSe
               const taskFeedback = copyFeedback?.id === row.id && copyFeedback.target === 'task' ? copyFeedback.status : undefined;
               const resumeFeedback = copyFeedback?.id === row.id && copyFeedback.target === 'resume' ? copyFeedback.status : undefined;
               const favorited = Boolean(row.favorited);
+              const sessionFiltered = Boolean(row.providerInstanceId) && row.providerInstanceId === activeSessionId;
               return (
                 <tr key={row.id} className={favorited ? 'historyFavoriteRow' : undefined}>
                   <td><HistoryProviderIdentity provider={row.provider} /></td>
@@ -973,10 +976,11 @@ function HistoryTable({ rows, onShowDetail, onToggleFavorite, onDelete, onShowSe
                           {resumeFeedback === 'copied' ? <Check size={14} /> : resumeFeedback === 'failed' ? <X size={14} /> : <Terminal size={14} />}
                         </button>
                         <button
-                          className="historyCopyButton historySessionButton"
+                          className={`historyCopyButton historySessionButton${sessionFiltered ? ' active' : ''}`}
                           type="button"
-                          title="会话历史"
-                          aria-label="会话历史"
+                          title={sessionFiltered ? '正按此会话筛选' : '会话历史'}
+                          aria-label={sessionFiltered ? '正按此会话筛选' : '会话历史'}
+                          aria-pressed={sessionFiltered}
                           disabled={!row.providerInstanceId}
                           onClick={() => onShowSessionHistory(row)}
                         >

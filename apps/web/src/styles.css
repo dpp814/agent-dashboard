@@ -1555,14 +1555,12 @@ td {
   background: var(--danger-soft);
 }
 
-.historySessionButton {
+/* Lit only while the archive is filtered down to this row's session. */
+.historySessionButton.active,
+.historySessionButton[aria-pressed='true'] {
   color: var(--success-text);
   border-color: var(--success-border);
   background: var(--success-soft);
-}
-
-.historySessionButton:hover:not(:disabled) {
-  color: var(--text-strong);
 }
 
 .historyCopyButton.copied {
