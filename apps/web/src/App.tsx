@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Bell, Check, ChevronDown, Clock, Copy, Eye, Flame, History, Layers3, Moon, Play, Search, ShieldAlert, Sparkles, Star, Sun, Terminal, Trash2, Volume2, VolumeX, X, Zap } from 'lucide-react';
 import type { AgentState, AgentStatus, ApprovalRequest, DashboardSnapshot, TaskHistory, WsMessage } from '@agent-monitor/shared';
-import { connectWs, deleteHistorySession, fetchHistoryDetail, fetchSnapshot, resolveApproval, setHistoryFavorite, type HistoryDetail, type HistoryProviderFilter } from './api';
+import { connectWs, deleteHistory, deleteHistorySession, fetchHistoryDetail, fetchSnapshot, resolveApproval, setHistoryFavorite, type HistoryDetail, type HistoryProviderFilter } from './api';
 
 type NotificationPermissionState = NotificationPermission | 'unsupported';
 type ThemeMode = 'day' | 'night' | 'eye';
@@ -377,41 +377,48 @@ export function App() {
     }
   }
 
+  async function refreshHistoryPage(page: number, search: string, sessionId: string) {
+    const { pageSize, provider, favoritesOnly } = historyQuery.current;
+    const load = (target: number) => fetchSnapshot(search, pageSize, target * pageSize, provider, sessionId, favoritesOnly);
+    let nextPage = page;
+    let next = await load(nextPage);
+    const lastPage = Math.max(0, Math.ceil(next.historyTotal / pageSize) - 1);
+    if (nextPage > lastPage) {
+      nextPage = lastPage;
+      next = await load(nextPage);
+    }
+    setHistoryPage(nextPage);
+    setSnapshot(normalizeSnapshot(next));
+  }
+
   async function onDeleteHistorySession(sessionId: string): Promise<boolean> {
     try {
       await deleteHistorySession(sessionId);
       const query = historyQuery.current;
       const clearSessionFilter = query.sessionId === sessionId;
-      const nextSearch = clearSessionFilter ? '' : query.search;
-      const nextSessionId = clearSessionFilter ? '' : query.sessionId;
-      let nextPage = clearSessionFilter ? 0 : query.page;
-      let next = await fetchSnapshot(
-        nextSearch,
-        query.pageSize,
-        nextPage * query.pageSize,
-        query.provider,
-        nextSessionId,
-        query.favoritesOnly
-      );
-      const lastPage = Math.max(0, Math.ceil(next.historyTotal / query.pageSize) - 1);
-      if (nextPage > lastPage) {
-        nextPage = lastPage;
-        next = await fetchSnapshot(
-          nextSearch,
-          query.pageSize,
-          nextPage * query.pageSize,
-          query.provider,
-          nextSessionId,
-          query.favoritesOnly
-        );
-      }
       if (clearSessionFilter) {
         setSearch('');
         setHistorySessionId('');
       }
-      setHistoryPage(nextPage);
-      setSnapshot(normalizeSnapshot(next));
+      await refreshHistoryPage(
+        clearSessionFilter ? 0 : query.page,
+        clearSessionFilter ? '' : query.search,
+        clearSessionFilter ? '' : query.sessionId
+      );
       setHistoryDetail(undefined);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  }
+
+  async function onDeleteHistoryRow(row: TaskHistory): Promise<boolean> {
+    try {
+      await deleteHistory(row.id);
+      const query = historyQuery.current;
+      await refreshHistoryPage(query.page, query.search, query.sessionId);
+      setHistoryDetail((current) => (current?.history.id === row.id ? undefined : current));
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -612,6 +619,7 @@ export function App() {
           rows={snapshot.history}
           onShowDetail={onShowHistoryDetail}
           onToggleFavorite={onToggleHistoryFavorite}
+          onDelete={onDeleteHistoryRow}
           onShowSessionHistory={(row) => {
             if (!row.providerInstanceId) return;
             setHistorySessionId(row.providerInstanceId);
@@ -773,14 +781,25 @@ function ApprovalCard({ approval, onResolve }: { approval: ApprovalRequest; onRe
   );
 }
 
-function HistoryTable({ rows, onShowDetail, onToggleFavorite, onShowSessionHistory }: {
+function HistoryTable({ rows, onShowDetail, onToggleFavorite, onDelete, onShowSessionHistory }: {
   rows: TaskHistory[];
   onShowDetail: (row: TaskHistory) => void;
   onToggleFavorite: (row: TaskHistory) => void;
+  onDelete: (row: TaskHistory) => Promise<boolean>;
   onShowSessionHistory: (row: TaskHistory) => void;
 }) {
   const [copyFeedback, setCopyFeedback] = useState<{ id: number; target: 'task' | 'resume'; status: 'copied' | 'failed' }>();
+  const [deleteTarget, setDeleteTarget] = useState<TaskHistory>();
+  const [deleting, setDeleting] = useState(false);
   const copyFeedbackTimer = useRef<number | undefined>(undefined);
+
+  async function onConfirmDelete() {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    await onDelete(deleteTarget);
+    setDeleting(false);
+    setDeleteTarget(undefined);
+  }
 
   async function onCopyTask(row: TaskHistory) {
     const copied = await copyHistoryTask(row);
@@ -798,99 +817,121 @@ function HistoryTable({ rows, onShowDetail, onToggleFavorite, onShowSessionHisto
 
   if (!rows.length) return <EmptyState text="暂无卷宗" compact />;
   return (
-    <div className="tableWrap">
-      <table className="historyTable">
-        <colgroup>
-          <col className="historyAgentCol" />
-          <col className="historyTaskCol" />
-          <col className="historyStatusCol" />
-          <col className="historyEndedCol" />
-          <col className="historyDurationCol" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th>道友</th>
-            <th>事务</th>
-            <th>境况</th>
-            <th>归档</th>
-            <th>耗时</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
-            const taskText = historyTaskText(row);
-            const resumeCommand = historyResumeCommand(row);
-            const taskFeedback = copyFeedback?.id === row.id && copyFeedback.target === 'task' ? copyFeedback.status : undefined;
-            const resumeFeedback = copyFeedback?.id === row.id && copyFeedback.target === 'resume' ? copyFeedback.status : undefined;
-            const favorited = Boolean(row.favorited);
-            return (
-              <tr key={row.id} className={favorited ? 'historyFavoriteRow' : undefined}>
-                <td><HistoryProviderIdentity provider={row.provider} /></td>
-                <td className="historyTaskCell" title={taskText}>
-                  <div className="historyTaskContent">
-                    <span>{taskText || '暂无记载'}</span>
-                    <div className="historyTaskActions">
-                      <button
-                        className="historyCopyButton"
-                        type="button"
-                        title="查看详情"
-                        aria-label="查看详情"
-                        onClick={() => onShowDetail(row)}
-                      >
-                        <Eye size={14} />
-                      </button>
-                      <button
-                        className={`historyCopyButton ${taskFeedback === 'copied' ? 'copied' : ''} ${taskFeedback === 'failed' ? 'failed' : ''}`}
-                        type="button"
-                        title={copyButtonTitle(taskFeedback, '复制事务')}
-                        aria-label={copyButtonTitle(taskFeedback, '复制事务')}
-                        disabled={!taskText}
-                        onClick={() => void onCopyTask(row)}
-                      >
-                        {taskFeedback === 'copied' ? <Check size={14} /> : taskFeedback === 'failed' ? <X size={14} /> : <Copy size={14} />}
-                      </button>
-                      <button
-                        className={`historyCopyButton ${resumeFeedback === 'copied' ? 'copied' : ''} ${resumeFeedback === 'failed' ? 'failed' : ''}`}
-                        type="button"
-                        title={copyButtonTitle(resumeFeedback, '复制会话')}
-                        aria-label={copyButtonTitle(resumeFeedback, '复制会话')}
-                        disabled={!resumeCommand}
-                        onClick={() => void onCopyResume(row)}
-                      >
-                        {resumeFeedback === 'copied' ? <Check size={14} /> : resumeFeedback === 'failed' ? <X size={14} /> : <Terminal size={14} />}
-                      </button>
-                      <button
-                        className="historyCopyButton historySessionButton"
-                        type="button"
-                        title="会话历史"
-                        aria-label="会话历史"
-                        disabled={!row.providerInstanceId}
-                        onClick={() => onShowSessionHistory(row)}
-                      >
-                        <History size={14} />
-                      </button>
-                      <button
-                        className={`historyCopyButton historyFavoriteButton${favorited ? ' active' : ''}`}
-                        type="button"
-                        title={favorited ? '取消收藏' : '收藏'}
-                        aria-label={favorited ? '取消收藏' : '收藏'}
-                        aria-pressed={favorited}
-                        onClick={() => onToggleFavorite(row)}
-                      >
-                        <Star size={14} fill={favorited ? 'currentColor' : 'none'} />
-                      </button>
+    <>
+      <div className="tableWrap">
+        <table className="historyTable">
+          <colgroup>
+            <col className="historyAgentCol" />
+            <col className="historyTaskCol" />
+            <col className="historyStatusCol" />
+            <col className="historyEndedCol" />
+            <col className="historyDurationCol" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>道友</th>
+              <th>事务</th>
+              <th>境况</th>
+              <th>归档</th>
+              <th>耗时</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const taskText = historyTaskText(row);
+              const resumeCommand = historyResumeCommand(row);
+              const taskFeedback = copyFeedback?.id === row.id && copyFeedback.target === 'task' ? copyFeedback.status : undefined;
+              const resumeFeedback = copyFeedback?.id === row.id && copyFeedback.target === 'resume' ? copyFeedback.status : undefined;
+              const favorited = Boolean(row.favorited);
+              return (
+                <tr key={row.id} className={favorited ? 'historyFavoriteRow' : undefined}>
+                  <td><HistoryProviderIdentity provider={row.provider} /></td>
+                  <td className="historyTaskCell" title={taskText}>
+                    <div className="historyTaskContent">
+                      <span>{taskText || '暂无记载'}</span>
+                      <div className="historyTaskActions">
+                        <button
+                          className="historyCopyButton"
+                          type="button"
+                          title="查看详情"
+                          aria-label="查看详情"
+                          onClick={() => onShowDetail(row)}
+                        >
+                          <Eye size={14} />
+                        </button>
+                        <button
+                          className={`historyCopyButton ${taskFeedback === 'copied' ? 'copied' : ''} ${taskFeedback === 'failed' ? 'failed' : ''}`}
+                          type="button"
+                          title={copyButtonTitle(taskFeedback, '复制事务')}
+                          aria-label={copyButtonTitle(taskFeedback, '复制事务')}
+                          disabled={!taskText}
+                          onClick={() => void onCopyTask(row)}
+                        >
+                          {taskFeedback === 'copied' ? <Check size={14} /> : taskFeedback === 'failed' ? <X size={14} /> : <Copy size={14} />}
+                        </button>
+                        <button
+                          className={`historyCopyButton ${resumeFeedback === 'copied' ? 'copied' : ''} ${resumeFeedback === 'failed' ? 'failed' : ''}`}
+                          type="button"
+                          title={copyButtonTitle(resumeFeedback, '复制会话')}
+                          aria-label={copyButtonTitle(resumeFeedback, '复制会话')}
+                          disabled={!resumeCommand}
+                          onClick={() => void onCopyResume(row)}
+                        >
+                          {resumeFeedback === 'copied' ? <Check size={14} /> : resumeFeedback === 'failed' ? <X size={14} /> : <Terminal size={14} />}
+                        </button>
+                        <button
+                          className="historyCopyButton historySessionButton"
+                          type="button"
+                          title="会话历史"
+                          aria-label="会话历史"
+                          disabled={!row.providerInstanceId}
+                          onClick={() => onShowSessionHistory(row)}
+                        >
+                          <History size={14} />
+                        </button>
+                        <button
+                          className={`historyCopyButton historyFavoriteButton${favorited ? ' active' : ''}`}
+                          type="button"
+                          title={favorited ? '取消收藏' : '收藏'}
+                          aria-label={favorited ? '取消收藏' : '收藏'}
+                          aria-pressed={favorited}
+                          onClick={() => onToggleFavorite(row)}
+                        >
+                          <Star size={14} fill={favorited ? 'currentColor' : 'none'} />
+                        </button>
+                        <button
+                          className="historyCopyButton historyRowDeleteButton"
+                          type="button"
+                          title="删除卷宗"
+                          aria-label="删除卷宗"
+                          onClick={() => setDeleteTarget(row)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                </td>
-                <td><StatusBadge status={row.finalStatus} /></td>
-                <td>{row.endedAt ? formatDateTime(row.endedAt) : '-'}</td>
-                <td>{row.durationMs === undefined ? '-' : formatMs(row.durationMs)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+                  </td>
+                  <td><StatusBadge status={row.finalStatus} /></td>
+                  <td>{row.endedAt ? formatDateTime(row.endedAt) : '-'}</td>
+                  <td>{row.durationMs === undefined ? '-' : formatMs(row.durationMs)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {deleteTarget ? (
+        <HistoryDeleteConfirm
+          title="删除这条卷宗"
+          description="该条历史记载及其事件将被永久删除，且无法撤销"
+          detailLabel="事务"
+          detailValue={historyTaskText(deleteTarget) || '暂无记载'}
+          deleting={deleting}
+          onCancel={() => setDeleteTarget(undefined)}
+          onConfirm={() => void onConfirmDelete()}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -937,7 +978,6 @@ function HistoryDetailDrawer({ detail, onClose, onDeleteSession }: {
   const [resultExpanded, setResultExpanded] = useState(false);
   const [resultLong, setResultLong] = useState(false);
   const resultRef = useRef<HTMLDivElement>(null);
-  const confirmDeleteButtonRef = useRef<HTMLButtonElement>(null);
   const [drawerWidth, setDrawerWidth] = useState(() => {
     const stored = Number(localStorage.getItem(DRAWER_WIDTH_KEY));
     return clampDrawerWidth(Number.isFinite(stored) && stored > 0 ? stored : DRAWER_DEFAULT_WIDTH);
@@ -958,11 +998,10 @@ function HistoryDetailDrawer({ detail, onClose, onDeleteSession }: {
     return () => observer.disconnect();
   }, [resultText, resultExpanded]);
   useEffect(() => {
-    if (deleteConfirmOpen) confirmDeleteButtonRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || deleting) return;
-      if (deleteConfirmOpen) setDeleteConfirmOpen(false);
-      else onClose();
+      // The confirm dialog owns Escape while it is open.
+      if (event.key !== 'Escape' || deleting || deleteConfirmOpen) return;
+      onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -1127,47 +1166,75 @@ function HistoryDetailDrawer({ detail, onClose, onDeleteSession }: {
         </section>
       </aside>
       {deleteConfirmOpen && row.providerInstanceId ? (
-        <div
-          className="historyDeleteConfirmBackdrop"
-          onClick={(event) => {
-            event.stopPropagation();
-            if (event.target === event.currentTarget && !deleting) setDeleteConfirmOpen(false);
-          }}
-        >
-          <section
-            className="historyDeleteConfirmDialog"
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="history-delete-title"
-            aria-describedby="history-delete-description"
-          >
-            <div className="historyDeleteConfirmIcon" aria-hidden="true">
-              <Trash2 size={20} />
-            </div>
-            <div className="historyDeleteConfirmCopy">
-              <h3 id="history-delete-title">删除整个会话</h3>
-              <p id="history-delete-description">该会话在 Agent Panel 中的全部历史和事件将被永久删除，且无法撤销</p>
-            </div>
-            <div className="historyDeleteConfirmSession">
-              <span>会话 ID</span>
-              <code title={row.providerInstanceId}>{row.providerInstanceId}</code>
-            </div>
-            <div className="historyDeleteConfirmActions">
-              <button type="button" disabled={deleting} onClick={() => setDeleteConfirmOpen(false)}>取消</button>
-              <button
-                ref={confirmDeleteButtonRef}
-                className="danger"
-                type="button"
-                disabled={deleting}
-                onClick={() => void onDelete()}
-              >
-                <Trash2 size={15} />
-                {deleting ? '删除中' : '确认删除'}
-              </button>
-            </div>
-          </section>
-        </div>
+        <HistoryDeleteConfirm
+          title="删除整个会话"
+          description="该会话在 Agent Panel 中的全部历史和事件将被永久删除，且无法撤销"
+          detailLabel="会话 ID"
+          detailValue={row.providerInstanceId}
+          deleting={deleting}
+          onCancel={() => setDeleteConfirmOpen(false)}
+          onConfirm={() => void onDelete()}
+        />
       ) : null}
+    </div>
+  );
+}
+
+function HistoryDeleteConfirm({ title, description, detailLabel, detailValue, deleting, onCancel, onConfirm }: {
+  title: string;
+  description: string;
+  detailLabel: string;
+  detailValue: string;
+  deleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    confirmButtonRef.current?.focus();
+  }, []);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !deleting) onCancel();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [deleting, onCancel]);
+
+  return (
+    <div
+      className="historyDeleteConfirmBackdrop"
+      onClick={(event) => {
+        event.stopPropagation();
+        if (event.target === event.currentTarget && !deleting) onCancel();
+      }}
+    >
+      <section
+        className="historyDeleteConfirmDialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="history-delete-title"
+        aria-describedby="history-delete-description"
+      >
+        <div className="historyDeleteConfirmIcon" aria-hidden="true">
+          <Trash2 size={20} />
+        </div>
+        <div className="historyDeleteConfirmCopy">
+          <h3 id="history-delete-title">{title}</h3>
+          <p id="history-delete-description">{description}</p>
+        </div>
+        <div className="historyDeleteConfirmSession">
+          <span>{detailLabel}</span>
+          <code title={detailValue}>{detailValue}</code>
+        </div>
+        <div className="historyDeleteConfirmActions">
+          <button type="button" disabled={deleting} onClick={onCancel}>取消</button>
+          <button ref={confirmButtonRef} className="danger" type="button" disabled={deleting} onClick={onConfirm}>
+            <Trash2 size={15} />
+            {deleting ? '删除中' : '确认删除'}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

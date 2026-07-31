@@ -1449,6 +1449,12 @@ td {
   background: color-mix(in srgb, var(--warning-bg) 28%, transparent);
 }
 
+.historyRowDeleteButton:hover:not(:disabled) {
+  color: var(--danger-text);
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+}
+
 .historySessionButton {
   color: var(--success-text);
   border-color: var(--success-border);

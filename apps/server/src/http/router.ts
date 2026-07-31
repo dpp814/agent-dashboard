@@ -14,6 +14,24 @@ export function createRouter(store: StateStore, ws: WebSocketHub) {
     try {
       const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
+      const devOrigin = localDevOrigin(req);
+      if (devOrigin) {
+        res.setHeader('access-control-allow-origin', devOrigin);
+        res.setHeader('vary', 'origin');
+      }
+
+      // DELETE is never a simple request, and any request carrying a token is not
+      // either, so the dev origin preflights them.
+      if (req.method === 'OPTIONS' && url.pathname.startsWith('/api/')) {
+        res.writeHead(204, {
+          'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
+          'access-control-allow-headers': 'authorization, content-type',
+          'access-control-max-age': '600'
+        });
+        res.end();
+        return;
+      }
+
       if (req.method === 'GET' && url.pathname === '/api/snapshot') {
         if (!authorized(req, url)) {
           json(res, { error: 'unauthorized' }, 401);
@@ -194,11 +212,17 @@ export function authorizedRequest(req: IncomingMessage): boolean {
 }
 
 function json(res: ServerResponse, body: unknown, status = 200): void {
-  res.writeHead(status, {
-    'content-type': 'application/json; charset=utf-8',
-    'access-control-allow-origin': 'http://127.0.0.1:5173'
-  });
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
+}
+
+// The dev server runs on a different port than the API, so the browser treats it as
+// cross-origin. In production the API serves web/dist itself and no header is needed.
+const LOCAL_DEV_ORIGIN = /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):\d+$/;
+
+function localDevOrigin(req: IncomingMessage): string | undefined {
+  const origin = req.headers.origin;
+  return typeof origin === 'string' && LOCAL_DEV_ORIGIN.test(origin) ? origin : undefined;
 }
 
 function authorized(req: IncomingMessage, url: URL): boolean {
