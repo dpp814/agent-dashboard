@@ -133,7 +133,7 @@ Environment variables:
 | `AGENT_MONITOR_TOKEN` | empty | Optional bearer token for API, WebSocket, hooks |
 | `AGENT_MONITOR_DATA_DIR` | `.agent-monitor` | SQLite and PID data directory |
 | `AGENT_MONITOR_POLL_MS` | `2500` | Discovery polling interval |
-| `AGENT_MONITOR_HISTORY_DAYS` | `0` | Retention in days for history/events/resolved approvals; `<= 0` keeps everything permanently |
+| `AGENT_MONITOR_HISTORY_DAYS` | `14` | Retention in days for history/events/resolved approvals; older rows are **deleted permanently**, `<= 0` keeps everything |
 | `AGENT_MONITOR_APPROVAL_TIMEOUT_MS` | `570000` | Claude permission request timeout |
 | `AGENT_MONITOR_CODEX_APPROVAL_TTL_MS` | `120000` | Codex/Grok pending approval display TTL |
 | `AGENT_MONITOR_GROK_APPROVAL_TOOLS` | `^(run_terminal_cmd\|run_terminal_command\|search_replace\|apply_patch\|write_file)$` | Regex of grok tool names gated as approvals via PreToolUse; empty disables grok approvals (monitor-only) |
@@ -142,7 +142,29 @@ Environment variables:
 | `VITE_API_BASE` | `http://127.0.0.1:8787` | Web client API base at build/dev time |
 | `VITE_AGENT_MONITOR_TOKEN` | empty | Web client token at build/dev time |
 
-History, event, and resolved approval records are retained permanently by default. Set `AGENT_MONITOR_HISTORY_DAYS` to a positive number of days to enable rolling cleanup.
+### Data retention
+
+> **Cleanup deletes rows permanently, and it starts as soon as the server boots.** Records older than
+> `AGENT_MONITOR_HISTORY_DAYS` are removed at startup and then once an hour. Lowering the value and
+> restarting deletes everything outside the new window immediately — for example switching from `14`
+> to `3` drops days 4-14 on the next start. There is no undo and no backup; copy
+> `.agent-monitor/agent-monitor.sqlite` first if you need those records.
+
+The default window is 14 days. Set `AGENT_MONITOR_HISTORY_DAYS` to `0` (or any negative number) to
+disable cleanup entirely and keep everything permanently.
+
+What each run deletes:
+
+| Data | Deleted when older than the window |
+|---|---|
+| Task history | Yes, except favorited entries and tasks that have not ended |
+| Agent events | Yes |
+| Approval requests | Yes, only resolved ones; pending requests are kept |
+| Agents | Never cleaned up |
+
+Favorite a history entry in the panel to exempt it from cleanup — favorites survive regardless of age.
+Note that SQLite does not shrink the database file on delete; the freed space is reused by later writes.
+Run `VACUUM` manually with the server stopped if you need the file itself to get smaller.
 
 Token example:
 

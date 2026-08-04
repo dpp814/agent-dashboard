@@ -427,8 +427,12 @@ export class AppDatabase {
     };
   }
 
+  // 收藏是用户主动标记要长期留着的，豁免于保留期清理
   cleanupHistory(cutoffIso: string): void {
-    this.db.prepare('DELETE FROM task_history WHERE ended_at IS NOT NULL AND ended_at < ?').run(cutoffIso);
+    this.db.prepare(`
+      DELETE FROM task_history
+      WHERE favorited = 0 AND ended_at IS NOT NULL AND ended_at < ?
+    `).run(cutoffIso);
   }
 
   cleanupEvents(cutoffIso: string): void {

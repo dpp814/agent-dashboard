@@ -8,7 +8,7 @@ export const serverConfig = {
   dataDir: process.env.AGENT_MONITOR_DATA_DIR ?? join(process.cwd(), '.agent-monitor'),
   pollMs: Number(process.env.AGENT_MONITOR_POLL_MS ?? 2500),
   // <= 0 表示永久保留，不清理历史
-  historyDays: Number(process.env.AGENT_MONITOR_HISTORY_DAYS ?? 0)
+  historyDays: Number(process.env.AGENT_MONITOR_HISTORY_DAYS ?? 14)
 };
 
 mkdirSync(serverConfig.dataDir, { recursive: true });
