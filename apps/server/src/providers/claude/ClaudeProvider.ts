@@ -23,9 +23,16 @@ interface ClaudeAgentRow {
   stat?: string;
 }
 
+// Spawning the claude CLI is a full Node boot, far too heavy for every 2.5s poll.
+// Hooks deliver realtime state anyway; the CLI list only backfills names/kinds.
+const CLI_AGENTS_CACHE_MS = Number(process.env.AGENT_MONITOR_CLAUDE_AGENTS_CACHE_MS ?? 10_000);
+const CLI_EXISTS_CACHE_MS = 5 * 60 * 1000;
+
 export class ClaudeProvider implements AgentProvider {
   type = 'claude' as const;
   private cache = new Map<string, AgentStatus>();
+  private cliExists: { value: boolean; expiresAt: number } | undefined;
+  private cliAgents: { rows: ClaudeAgentRow[] | undefined; expiresAt: number } | undefined;
 
   async discover(): Promise<AgentInstance[]> {
     const rows = await this.readAgentRows();
@@ -99,22 +106,42 @@ export class ClaudeProvider implements AgentProvider {
 
   private async readAgentRows(): Promise<ClaudeAgentRow[]> {
     const processRows = await readClaudeProcessRows();
-    if (!(await commandExists('claude'))) {
-      return processRows;
+    const cliRows = await this.readCliAgentRows();
+    if (!cliRows) return processRows;
+    // Cached CLI rows may reference dead pids; filtering against the fresh process
+    // list every poll keeps liveness accurate between CLI refreshes.
+    const agentRows = cliRows.filter((row) => hasLiveProcessOrTerminalState(row, processRows));
+    const knownPids = new Set(agentRows.map((row) => row.pid).filter((pid): pid is number => typeof pid === 'number'));
+    return [
+      ...agentRows.map((row) => mergeProcessRow(row, processRows)),
+      ...processRows.filter((row) => !row.pid || !knownPids.has(row.pid))
+    ];
+  }
+
+  private async readCliAgentRows(): Promise<ClaudeAgentRow[] | undefined> {
+    const now = Date.now();
+    if (this.cliAgents && this.cliAgents.expiresAt > now) return this.cliAgents.rows;
+    let rows: ClaudeAgentRow[] | undefined;
+    if (await this.claudeCliExists()) {
+      try {
+        const raw = await execFileText('claude', ['agents', '--json', '--all'], 5000);
+        const parsed = JSON.parse(raw);
+        rows = Array.isArray(parsed) ? parsed as ClaudeAgentRow[] : [];
+      } catch {
+        rows = undefined;
+      }
     }
-    try {
-      const raw = await execFileText('claude', ['agents', '--json', '--all'], 5000);
-      const parsed = JSON.parse(raw);
-      const agentRows = (Array.isArray(parsed) ? parsed as ClaudeAgentRow[] : [])
-        .filter((row) => hasLiveProcessOrTerminalState(row, processRows));
-      const knownPids = new Set(agentRows.map((row) => row.pid).filter((pid): pid is number => typeof pid === 'number'));
-      return [
-        ...agentRows.map((row) => mergeProcessRow(row, processRows)),
-        ...processRows.filter((row) => !row.pid || !knownPids.has(row.pid))
-      ];
-    } catch {
-      return processRows;
-    }
+    // Failures are cached too, so a broken CLI is not re-spawned every poll.
+    this.cliAgents = { rows, expiresAt: now + CLI_AGENTS_CACHE_MS };
+    return rows;
+  }
+
+  private async claudeCliExists(): Promise<boolean> {
+    const now = Date.now();
+    if (this.cliExists && this.cliExists.expiresAt > now) return this.cliExists.value;
+    const value = await commandExists('claude');
+    this.cliExists = { value, expiresAt: now + CLI_EXISTS_CACHE_MS };
+    return value;
   }
 }
 
@@ -133,8 +160,10 @@ function claudeTask(row: ClaudeAgentRow): string | undefined {
   return taskStartFromTranscriptFile(path)?.task;
 }
 
+// Claude Code names project dirs by replacing every non-alphanumeric character
+// with '-' (dots and underscores included), not just path separators.
 function claudeProjectSlug(cwd: string): string {
-  return cwd.replace(/\\/g, '/').replace(/\//g, '-');
+  return cwd.replace(/[^a-zA-Z0-9]/g, '-');
 }
 
 function mapClaudeState(row: ClaudeAgentRow): AgentStatus['status'] {

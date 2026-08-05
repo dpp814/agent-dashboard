@@ -483,14 +483,18 @@ export class AppDatabase {
   }
 
   // Keep the earliest completion per user turn; later shutdown/end_turn echoes are dropped.
+  // NULL started_at rows are left alone — SQLite GROUP BY treats NULLs as equal, which
+  // would collapse every legacy row without a start into one.
   private dedupeHistoryByTaskStart(): void {
     this.db.exec(`
       DELETE FROM task_history
-      WHERE id NOT IN (
-        SELECT MIN(id)
-        FROM task_history
-        GROUP BY agent_id, started_at
-      );
+      WHERE started_at IS NOT NULL
+        AND id NOT IN (
+          SELECT MIN(id)
+          FROM task_history
+          WHERE started_at IS NOT NULL
+          GROUP BY agent_id, started_at
+        );
     `);
   }
 

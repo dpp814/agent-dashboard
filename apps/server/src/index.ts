@@ -21,8 +21,9 @@ server.on('upgrade', (req, socket, head) => {
       socket.destroy();
       return;
     }
-    ws.handleUpgrade(req, socket, head);
-    ws.broadcast({ type: 'snapshot', payload: store.snapshot() });
+    const accepted = ws.handleUpgrade(req, socket, head);
+    // Only the fresh connection needs a catch-up snapshot; the rest are already live.
+    if (accepted) ws.send(accepted, { type: 'snapshot', payload: store.snapshot() });
     return;
   }
   socket.destroy();

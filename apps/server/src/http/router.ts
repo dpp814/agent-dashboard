@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { timingSafeEqual } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
 import { extname, join, normalize, sep } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -144,7 +145,12 @@ export function createRouter(store: StateStore, ws: WebSocketHub) {
         const approvalPromise = isBlockingApproval && result.approval
           ? store.waitForApproval(result.approval.id, approvalTimeoutMs())
           : undefined;
-        ws.broadcast({ type: 'snapshot', payload: store.snapshot() });
+        // Tool events arrive many times per second and the incremental agent/approval/
+        // history messages below already carry the change. A full snapshot runs several
+        // SQL queries, so only rebuild it when stats or the approval list shifted.
+        if (result.completed || result.approval) {
+          ws.broadcast({ type: 'snapshot', payload: store.snapshot() });
+        }
         ws.broadcast({ type: 'agent', payload: result.agent });
         if (result.approval) ws.broadcast({ type: 'approval', payload: result.approval });
         if (result.history) ws.broadcast({ type: 'history', payload: result.history });
@@ -225,11 +231,29 @@ function localDevOrigin(req: IncomingMessage): string | undefined {
   return typeof origin === 'string' && LOCAL_DEV_ORIGIN.test(origin) ? origin : undefined;
 }
 
+// Hosts a browser may legitimately use to reach a loopback bind. A DNS-rebinding page
+// resolves its own domain to 127.0.0.1 and becomes same-origin with this server, but it
+// cannot forge the Host header, so rejecting foreign hosts closes that path.
+const LOCAL_HOST_HEADER = /^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i;
+const LOOPBACK_BINDS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+
 function authorized(req: IncomingMessage, url: URL): boolean {
-  if (!serverConfig.token) return true;
-  const header = req.headers.authorization;
-  const bearer = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : '';
-  return bearer === serverConfig.token || url.searchParams.get('token') === serverConfig.token;
+  if (serverConfig.token) {
+    const header = req.headers.authorization;
+    const bearer = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : '';
+    return safeEqual(bearer, serverConfig.token) ||
+      safeEqual(url.searchParams.get('token') ?? '', serverConfig.token);
+  }
+  if (LOOPBACK_BINDS.has(serverConfig.host)) {
+    return typeof req.headers.host === 'string' && LOCAL_HOST_HEADER.test(req.headers.host);
+  }
+  return true;
+}
+
+function safeEqual(left: string, right: string): boolean {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 function hookProvider(pathname: string): 'claude' | 'codex' | 'grok' | undefined {

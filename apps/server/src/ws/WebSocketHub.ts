@@ -10,11 +10,11 @@ interface Client {
 export class WebSocketHub {
   private clients = new Set<Client>();
 
-  handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+  handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Duplex | undefined {
     const key = req.headers['sec-websocket-key'];
     if (!key || Array.isArray(key)) {
       socket.destroy();
-      return;
+      return undefined;
     }
 
     const accept = createHash('sha1')
@@ -35,6 +35,11 @@ export class WebSocketHub {
     this.clients.add(client);
     socket.on('close', () => this.clients.delete(client));
     socket.on('error', () => this.clients.delete(client));
+    return socket;
+  }
+
+  send(socket: Duplex, message: WsMessage): void {
+    socket.write(encodeFrame(JSON.stringify(message)));
   }
 
   broadcast(message: WsMessage): void {

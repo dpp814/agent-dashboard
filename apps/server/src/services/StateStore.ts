@@ -526,7 +526,7 @@ function reduceAgent(current: AgentStatus, event: AgentEvent): AgentStatus {
         status: 'running',
         activeSince: current.activeSince ?? event.ts,
         currentTool: getToolName(payload),
-        task: getTask(payload, event.ts) ?? current.task,
+        task: taskForEvent(current, payload, event.ts),
         waitingFor: undefined,
         approval: undefined
       };
@@ -536,7 +536,7 @@ function reduceAgent(current: AgentStatus, event: AgentEvent): AgentStatus {
         status: 'running',
         activeSince: current.activeSince,
         currentTool: getToolName(payload) ?? current.currentTool,
-        task: getTask(payload, event.ts) ?? current.task,
+        task: taskForEvent(current, payload, event.ts),
         waitingFor: undefined,
         approval: undefined
       };
@@ -546,7 +546,7 @@ function reduceAgent(current: AgentStatus, event: AgentEvent): AgentStatus {
         status: 'waiting_approval',
         currentTool: getToolName(payload),
         activeSince: event.ts,
-        task: getTask(payload, event.ts) ?? current.task,
+        task: taskForEvent(current, payload, event.ts),
         waitingFor: summarizeApproval(payload)
       };
     case 'input_requested':
@@ -554,14 +554,14 @@ function reduceAgent(current: AgentStatus, event: AgentEvent): AgentStatus {
         ...base,
         status: 'waiting_input',
         activeSince: event.ts,
-        task: getTask(payload, event.ts) ?? current.task,
+        task: taskForEvent(current, payload, event.ts),
         waitingFor: summarizeInputRequest(payload)
       };
     case 'finished':
       return {
         ...base,
         status: 'finished',
-        task: getTask(payload, event.ts) ?? current.task,
+        task: taskForEvent(current, payload, event.ts),
         finishedAt: event.ts,
         currentTool: undefined,
         waitingFor: undefined,
@@ -604,6 +604,15 @@ function getToolName(payload: Record<string, unknown>): string | undefined {
 
 function getTask(payload: Record<string, unknown>, beforeTs?: string): string | undefined {
   return cleanTaskText(payload.prompt ?? payload.task ?? payload.message) || taskFromTranscript(payload, beforeTs);
+}
+
+// The transcript fallback re-reads the whole JSONL from disk, and almost every Claude
+// hook payload carries transcript_path. Outside of turn starts, only pay that cost while
+// the agent has no task yet (e.g. first event seen after a server restart).
+function taskForEvent(current: AgentStatus, payload: Record<string, unknown>, ts: string): string | undefined {
+  return cleanTaskText(payload.prompt ?? payload.task ?? payload.message) ||
+    current.task ||
+    taskFromTranscript(payload, ts);
 }
 
 function getCwd(payload: Record<string, unknown>): string | undefined {
