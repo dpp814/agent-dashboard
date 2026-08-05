@@ -555,7 +555,7 @@ function reduceAgent(current: AgentStatus, event: AgentEvent): AgentStatus {
         status: 'waiting_input',
         activeSince: event.ts,
         task: getTask(payload, event.ts) ?? current.task,
-        waitingFor: String(payload.waitingFor ?? payload.message ?? 'input needed')
+        waitingFor: summarizeInputRequest(payload)
       };
     case 'finished':
       return {
@@ -617,6 +617,20 @@ function summarizeApproval(payload: Record<string, unknown>): string {
   return command ? `${toolName} ${String(command)}` : `${toolName} approval requested`;
 }
 
+// AskUserQuestion carries its prompt in tool_input.questions[], not in `message`. Show the
+// question headers so the card says what is being asked, plus a reminder that the options
+// can only be picked in the terminal — the panel has no action that answers this.
+function summarizeInputRequest(payload: Record<string, unknown>): string {
+  const explicit = String(payload.waitingFor ?? payload.message ?? '').trim();
+  if (!isQuestionTool(payload)) return explicit || 'input needed';
+  const input = (payload.tool_input ?? payload.toolInput) as Record<string, unknown> | undefined;
+  const questions = Array.isArray(input?.questions) ? input.questions : [];
+  const headers = questions
+    .map((item) => String((item as Record<string, unknown>)?.header ?? '').trim())
+    .filter(Boolean);
+  return headers.length ? `需回终端应答 · ${headers.join(' / ')}` : '需回终端应答';
+}
+
 function taskFromTranscript(payload: Record<string, unknown>, beforeTs?: string): string | undefined {
   return taskStartFromTranscript(payload, beforeTs)?.task;
 }
@@ -639,7 +653,10 @@ export function eventFromHook(provider: 'claude' | 'codex' | 'grok', input: Reco
   const type: AgentEvent['type'] =
     // Grok uses PreToolUse as its approval gate; treat risky tools as approval requests.
     hookEvent === 'pre_tool_use' ? (isGrokApprovalTool(input) ? 'approval_requested' : 'tool_started') :
-    hookEvent === 'PermissionRequest' ? 'approval_requested' :
+    // AskUserQuestion also gates through PermissionRequest, but "approve" there only
+    // lets the dialog render in the terminal — the panel cannot pick an option. Route it
+    // to input_requested so no ApprovalRequest is created and the hook is left unblocked.
+    hookEvent === 'PermissionRequest' ? (isQuestionTool(input) ? 'input_requested' : 'approval_requested') :
     hookEvent === 'UserPromptSubmit' || hookEvent === 'user_prompt_submit' ? 'started' :
     hookEvent === 'PreToolUse' ? 'tool_started' :
     hookEvent === 'PostToolUse' || hookEvent === 'PostToolUseFailure' ? 'tool_finished' :
@@ -674,11 +691,16 @@ function isGrokApprovalTool(input: Record<string, unknown>): boolean {
   }
 }
 
+// Claude fires `idle_prompt` ("Claude is waiting for your input", "Turn complete")
+// roughly 60s after the prompt goes quiet — including right after a turn finished, which
+// used to drag completed agents back into waiting_input. Every genuine block arrives on
+// PermissionRequest instead, so idle pings are noise here and stay heartbeats.
+// `permission_prompt` is likewise a duplicate of the PermissionRequest hook.
 function isWaitingNotification(input: Record<string, unknown>): boolean {
   const notificationType = String(input.notification_type ?? input.notificationType ?? '').toLowerCase();
-  const message = String(input.message ?? input.title ?? '').toLowerCase();
-  return notificationType.includes('permission') ||
-    notificationType.includes('idle') ||
-    message.includes('permission') ||
-    message.includes('waiting');
+  return notificationType === 'agent_needs_input' || notificationType === 'elicitation_dialog';
+}
+
+function isQuestionTool(input: Record<string, unknown>): boolean {
+  return getToolName(input) === 'AskUserQuestion';
 }
