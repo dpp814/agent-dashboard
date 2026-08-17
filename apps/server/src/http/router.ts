@@ -263,8 +263,8 @@ function hookProvider(pathname: string): 'claude' | 'codex' | 'grok' | undefined
   return undefined;
 }
 
-function historyProviderFilter(value: string | null): 'all' | 'claude' | 'codex' | 'grok' {
-  return value === 'claude' || value === 'codex' || value === 'grok' ? value : 'all';
+function historyProviderFilter(value: string | null): 'all' | 'claude' | 'codex' | 'grok' | 'opencode' {
+  return value === 'claude' || value === 'codex' || value === 'grok' || value === 'opencode' ? value : 'all';
 }
 
 function isPermissionRequest(body: Record<string, unknown>): boolean {

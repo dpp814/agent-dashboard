@@ -4,13 +4,15 @@ import { AppDatabase } from '../db/Database.js';
 import { ClaudeProvider } from '../providers/claude/ClaudeProvider.js';
 import { CodexProvider } from '../providers/codex/CodexProvider.js';
 import { GrokProvider } from '../providers/grok/GrokProvider.js';
+import { OpenCodeProvider } from '../providers/opencode/OpenCodeProvider.js';
+import { syncOpenCodeHistory } from '../providers/opencode/syncHistory.js';
 import { StateStore } from './StateStore.js';
 import { WebSocketHub } from '../ws/WebSocketHub.js';
 
 export class DiscoveryService {
   private timer: NodeJS.Timeout | undefined;
   private cleanupTimer: NodeJS.Timeout | undefined;
-  private providers = [new ClaudeProvider(), new CodexProvider(), new GrokProvider()];
+  private providers = [new ClaudeProvider(), new CodexProvider(), new GrokProvider(), new OpenCodeProvider()];
 
   constructor(
     private store: StateStore,
@@ -43,6 +45,11 @@ export class DiscoveryService {
         }
         if (this.store.markProviderMissing(provider.type, seenIds).length) changedAny = true;
         if (changedAny) this.ws.broadcast({ type: 'snapshot', payload: this.store.snapshot() });
+
+        // OpenCode 历史同步
+        if (provider.type === 'opencode') {
+          syncOpenCodeHistory(provider as OpenCodeProvider, this.store, this.db);
+        }
       } catch (error) {
         this.ws.broadcast({
           type: 'error',

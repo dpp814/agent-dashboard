@@ -1198,6 +1198,10 @@ input {
   --provider-color: var(--text-strong);
 }
 
+.provider-opencode {
+  --provider-color: #3b82f6;
+}
+
 .historyProviderFilter button svg {
   flex: none;
   color: var(--provider-color);
@@ -1222,6 +1226,10 @@ input {
 
 .historyProviderGlyph.brand-grok {
   mask-image: url('/provider-icon/grok.svg');
+}
+
+.historyProviderGlyph.brand-opencode {
+  mask-image: url('/provider-icon/opencode.svg');
 }
 
 .historyProviderFilter button.active {

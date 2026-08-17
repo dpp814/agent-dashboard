@@ -42,7 +42,8 @@ const historyProviderOptions: Array<{ value: HistoryProviderFilter; label: strin
   { value: 'all', label: '全部' },
   { value: 'claude', label: 'Claude' },
   { value: 'codex', label: 'Codex' },
-  { value: 'grok', label: 'Grok' }
+  { value: 'grok', label: 'Grok' },
+  { value: 'opencode', label: 'OpenCode' }
 ];
 const themeStorageKey = 'agent-monitor-theme';
 const historyPageSizeStorageKey = 'agent-monitor-history-page-size';
@@ -1047,7 +1048,7 @@ function HistoryProviderIcon({ provider, size = 14 }: {
   provider: TaskHistory['provider'] | HistoryProviderFilter;
   size?: number;
 }) {
-  if (provider === 'claude' || provider === 'codex' || provider === 'grok') {
+  if (provider === 'claude' || provider === 'codex' || provider === 'grok' || provider === 'opencode') {
     return <span className={`historyProviderGlyph brand-${provider}`} style={{ width: size, height: size }} aria-hidden="true" />;
   }
   if (provider === 'all') return <Layers3 size={size} />;

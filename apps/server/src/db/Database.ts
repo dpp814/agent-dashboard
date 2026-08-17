@@ -207,6 +207,15 @@ export class AppDatabase {
     return Boolean(row);
   }
 
+  hasHistoryForProviderInstance(providerInstanceId: string): boolean {
+    const row = this.db.prepare(`
+      SELECT 1 FROM task_history
+      WHERE provider_instance_id = ?
+      LIMIT 1
+    `).get(providerInstanceId);
+    return Boolean(row);
+  }
+
   hasHistoryForTaskStart(agentId: string, startedAt: string): boolean {
     const row = this.db.prepare(`
       SELECT 1 FROM task_history
@@ -650,7 +659,7 @@ function parseJsonObject(value: unknown): Record<string, unknown> {
 }
 
 function historyProviderFilter(value: unknown): HistoryProviderFilter {
-  return value === 'claude' || value === 'codex' || value === 'grok' ? value : 'all';
+  return value === 'claude' || value === 'codex' || value === 'grok' || value === 'opencode' ? value : 'all';
 }
 
 function nullableString(value: unknown): string | undefined {
