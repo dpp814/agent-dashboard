@@ -354,7 +354,8 @@ export function App() {
     if (message.type === 'history') {
       const { search: currentSearch, page, pageSize, provider, sessionId, favoritesOnly } = historyQuery.current;
       const filtered = Boolean(currentSearch.trim() || provider !== 'all' || sessionId || favoritesOnly);
-      maybeNotifyHistory(message.payload, highlightNotificationIcon);
+      // 收藏/取消收藏的回显广播不代表任务刚完成，不能触发完成通知
+      if (message.source !== 'favorite') maybeNotifyHistory(message.payload, highlightNotificationIcon);
       setSnapshot((current) => applyHistoryUpdate(current, message.payload, page, pageSize, !filtered, favoritesOnly));
       if (filtered) {
         fetchSnapshot(currentSearch, pageSize, page * pageSize, provider, sessionId, favoritesOnly)

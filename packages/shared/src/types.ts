@@ -103,5 +103,5 @@ export type WsMessage =
   | { type: 'snapshot'; payload: DashboardSnapshot }
   | { type: 'agent'; payload: AgentStatus }
   | { type: 'approval'; payload: ApprovalRequest }
-  | { type: 'history'; payload: TaskHistory }
+  | { type: 'history'; payload: TaskHistory; source?: 'favorite' }
   | { type: 'error'; payload: { message: string } };

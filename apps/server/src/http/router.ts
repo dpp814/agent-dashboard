@@ -88,7 +88,7 @@ export function createRouter(store: StateStore, ws: WebSocketHub) {
           json(res, { error: 'history not found' }, 404);
           return;
         }
-        ws.broadcast({ type: 'history', payload: history });
+        ws.broadcast({ type: 'history', payload: history, source: 'favorite' });
         json(res, history);
         return;
       }
