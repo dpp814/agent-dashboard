@@ -46,9 +46,15 @@ export class DiscoveryService {
         if (this.store.markProviderMissing(provider.type, seenIds).length) changedAny = true;
         if (changedAny) this.ws.broadcast({ type: 'snapshot', payload: this.store.snapshot() });
 
-        // OpenCode 历史同步
+        // OpenCode 历史同步（逐条广播，让前端无需手动刷新即可看到新完成的问答）
         if (provider.type === 'opencode') {
-          syncOpenCodeHistory(provider as OpenCodeProvider, this.store, this.db);
+          const sync = syncOpenCodeHistory(provider as OpenCodeProvider, this.db);
+          if (sync.upserted.length) {
+            for (const row of sync.upserted) {
+              this.ws.broadcast({ type: 'history', payload: row });
+            }
+            this.ws.broadcast({ type: 'snapshot', payload: this.store.snapshot() });
+          }
         }
       } catch (error) {
         this.ws.broadcast({

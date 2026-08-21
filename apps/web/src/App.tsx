@@ -1367,6 +1367,9 @@ function historyResumeCommand(row: TaskHistory): string | undefined {
   if (row.provider === 'grok' && !/^\d+$/.test(row.providerInstanceId)) {
     return `grok --resume ${row.providerInstanceId}`;
   }
+  if (row.provider === 'opencode' && row.providerInstanceId.startsWith('ses_')) {
+    return `opencode -s ${row.providerInstanceId}`;
+  }
   return undefined;
 }
 

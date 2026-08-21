@@ -65,6 +65,13 @@ export class AppDatabase {
         final_status TEXT NOT NULL,
         result_summary TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS provider_history_sync (
+        provider TEXT NOT NULL,
+        provider_instance_id TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        PRIMARY KEY (provider, provider_instance_id, started_at)
+      );
     `);
     this.addColumnIfMissing('agents', 'active_since', 'TEXT');
     this.addColumnIfMissing('task_history', 'provider_instance_id', 'TEXT');
@@ -87,6 +94,7 @@ export class AppDatabase {
     this.backfillZeroDurationHistory();
     this.backfillMissingCompletionHistory();
     this.dedupeHistoryByTaskStart();
+    this.dedupeOpenCodeEvents();
   }
 
   upsertAgent(agent: AgentStatus): void {
@@ -207,13 +215,65 @@ export class AppDatabase {
     return Boolean(row);
   }
 
-  hasHistoryForProviderInstance(providerInstanceId: string): boolean {
-    const row = this.db.prepare(`
-      SELECT 1 FROM task_history
+  getHistoryByProviderInstance(providerInstanceId: string): TaskHistory[] {
+    return this.db.prepare(`
+      SELECT * FROM task_history
       WHERE provider_instance_id = ?
+      ORDER BY started_at ASC
+    `).all(providerInstanceId).map(rowToHistory);
+  }
+
+  updateHistory(id: number, row: Omit<TaskHistory, 'id' | 'favorited' | 'favoritedAt'>): TaskHistory {
+    this.db.prepare(`
+      UPDATE task_history
+      SET agent_id = ?, provider = ?, provider_instance_id = ?, task = ?, started_at = ?,
+          ended_at = ?, duration_ms = ?, final_status = ?, result_summary = ?
+      WHERE id = ?
+    `).run(
+      row.agentId,
+      row.provider,
+      row.providerInstanceId ?? null,
+      row.task ?? null,
+      row.startedAt ?? null,
+      row.endedAt ?? null,
+      row.durationMs ?? null,
+      row.finalStatus,
+      row.resultSummary ?? null,
+      id
+    );
+    return this.getHistory(id) as TaskHistory;
+  }
+
+  hasSyncedProviderHistoryTurn(provider: string, providerInstanceId: string, startedAt: string): boolean {
+    return Boolean(this.db.prepare(`
+      SELECT 1 FROM provider_history_sync
+      WHERE provider = ? AND provider_instance_id = ? AND started_at = ?
+    `).get(provider, providerInstanceId, startedAt));
+  }
+
+  markProviderHistoryTurnSynced(provider: string, providerInstanceId: string, startedAt: string): void {
+    this.db.prepare(`
+      INSERT OR IGNORE INTO provider_history_sync (provider, provider_instance_id, started_at)
+      VALUES (?, ?, ?)
+    `).run(provider, providerInstanceId, startedAt);
+  }
+
+  insertEventIfMissing(event: AgentEvent): void {
+    const payload = JSON.stringify(event.payload);
+    const exists = this.db.prepare(`
+      SELECT 1 FROM agent_events
+      WHERE agent_id = ? AND provider_instance_id = ? AND type = ? AND ts = ? AND payload_json = ?
       LIMIT 1
-    `).get(providerInstanceId);
-    return Boolean(row);
+    `).get(event.agentId, event.providerInstanceId, event.type, event.ts, payload);
+    if (!exists) this.insertEvent(event);
+  }
+
+  deleteCompletionEvents(agentId: string, providerInstanceId: string, endedAt: string): void {
+    this.db.prepare(`
+      DELETE FROM agent_events
+      WHERE agent_id = ? AND provider_instance_id = ? AND ts = ?
+        AND type IN ('tool_finished', 'finished', 'error')
+    `).run(agentId, providerInstanceId, endedAt);
   }
 
   hasHistoryForTaskStart(agentId: string, startedAt: string): boolean {
@@ -223,6 +283,16 @@ export class AppDatabase {
       LIMIT 1
     `).get(agentId, startedAt);
     return Boolean(row);
+  }
+
+  findHistoryByTaskStart(agentId: string, startedAt: string): TaskHistory | undefined {
+    const row = this.db.prepare(`
+      SELECT * FROM task_history
+      WHERE agent_id = ? AND started_at = ?
+      ORDER BY id DESC
+      LIMIT 1
+    `).get(agentId, startedAt) as Record<string, unknown> | undefined;
+    return row ? rowToHistory(row) : undefined;
   }
 
   findLatestTaskStart(agentId: string, beforeTs: string): { startedAt: string; task?: string } | undefined {
@@ -503,6 +573,19 @@ export class AppDatabase {
           FROM task_history
           WHERE started_at IS NOT NULL
           GROUP BY agent_id, started_at
+        );
+    `);
+  }
+
+  private dedupeOpenCodeEvents(): void {
+    this.db.exec(`
+      DELETE FROM agent_events
+      WHERE provider = 'opencode'
+        AND id NOT IN (
+          SELECT MIN(id)
+          FROM agent_events
+          WHERE provider = 'opencode'
+          GROUP BY agent_id, provider_instance_id, type, ts, payload_json
         );
     `);
   }
