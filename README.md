@@ -1,10 +1,10 @@
 # AI修仙传
 
-本地 AI 编程 Agent 看板。它监控 Claude Code、Codex CLI 和 Grok CLI 会话，接收 Hook 事件，展示修行状态、待授权、任务卷宗和通知图鉴，并可在浏览器中处理 Claude 和 Grok 授权请求。
+本地 AI 编程 Agent 看板。它监控 Claude Code、Codex CLI、Grok CLI 和 OpenCode 会话，接收 Hook 事件，展示修行状态、待授权、任务卷宗和通知图鉴，并可在浏览器中处理 Claude 和 Grok 授权请求。
 
 ## Features
 
-- 监控 Claude Code、Codex CLI、Grok CLI 进程和 Hook 事件
+- 监控 Claude Code、Codex CLI、Grok CLI 进程和 Hook 事件；OpenCode 免 Hook，按进程发现并同步历史卷宗
 - 实时状态看板：修行、候令、待言、圆满、异象、坐化
 - 授令阁：集中展示授权请求，Claude 与 Grok 可在 Web UI 里准行/驳回
 - 自动授令：可选开关，开启后自动准行 Claude 与 Grok 的授权请求（有风险，见 UI Guide 说明）
@@ -33,6 +33,7 @@ AI修仙传
 - Claude Code CLI, optional
 - Codex CLI, optional
 - Grok CLI, optional
+- OpenCode CLI, optional
 
 `node:sqlite` is used by the server, so older Node.js versions may not work.
 
@@ -56,7 +57,7 @@ Install hooks:
 npm run hooks:install
 ```
 
-Start a Claude, Codex, or Grok session. The dashboard updates automatically.
+Start a Claude, Codex, Grok, or OpenCode session. The dashboard updates automatically.
 
 ## Scripts
 
@@ -182,6 +183,8 @@ Hooks forward CLI lifecycle events to:
 - `POST /api/hooks/codex`
 - `POST /api/hooks/grok`
 
+OpenCode needs no hook installation; see [OpenCode](#opencode).
+
 Install:
 
 ```bash
@@ -246,6 +249,15 @@ Grok hook events (grok normalizes event names to snake_case at runtime):
 
 Grok has no dedicated permission hook, so approvals are gated through `PreToolUse`: the panel returns a top-level `{"decision":"deny"}` to block a rejected/timed-out tool, and `{"decision":"allow"}` on approve. Because grok also executes hooks from `~/.claude/settings.json`, the forwarder tags events by the `GROK_HOOK_EVENT` marker so grok turns are never mislabeled as Claude.
 
+## OpenCode
+
+OpenCode integration needs no hooks. The server reads its local SQLite database read-only at `~/.local/share/opencode/opencode.db`.
+
+- Discovery: scans for live `opencode` CLI processes each poll. A process started with `-s/--session` binds to that session directly; otherwise sessions are matched by working directory. A new window that has not sent its first message yet shows a placeholder card until the session row appears
+- History sync: completed Q&A turns are synced into 卷宗 automatically and broadcast over WebSocket, no manual refresh needed. Live sessions are rescanned every poll; finished ones only when their update time changes
+- No approvals: OpenCode never raises permission requests, so nothing appears in 授令阁
+- Resume command: history rows offer `opencode -s <session_id>` for copy
+
 ## UI Guide
 
 ### 顶部状态概览
@@ -282,6 +294,7 @@ Shows pending approvals.
 - Claude: approve/reject in the browser; the decision is returned to the live `PermissionRequest` hook
 - Grok: approve/reject in the browser; the decision is returned to the live `PreToolUse` hook as a top-level allow/deny
 - Codex: displayed as observed pending state; answer in the CLI when required
+- OpenCode: history-only sync; it never raises approval requests, so nothing shows here
 
 Codex and Grok entries auto-expire after `AGENT_MONITOR_CODEX_APPROVAL_TTL_MS`, or resolve locally when matching tool completion is observed.
 
@@ -349,7 +362,7 @@ Task history table:
 
 Toolbar filters:
 
-- Provider filter: single-select among `全部` / `Claude` / `Codex` / `Grok`
+- Provider filter: single-select among `全部` / `Claude` / `Codex` / `Grok` / `OpenCode`
 - Favorite filter: independent toggle between the provider filter and search box; when active, only favorited history rows are queried
 - Search: filters task, provider, session id, agent id, final status, and result summary
 
@@ -359,7 +372,7 @@ Row actions:
 
 - View detail: open a drawer with full result summary, session metadata, resume command, and event timeline
 - Copy task: copy the prompt/result summary used for display
-- Copy resume command: copy `claude --resume ...`, `codex resume ...`, or `grok --resume ...` when available
+- Copy resume command: copy `claude --resume ...`, `codex resume ...`, `grok --resume ...`, or `opencode -s ...` when available
 - Session history: filter history by exact session id while keeping the current provider filter
 - Favorite / unfavorite: star toggle at the end of the action group; persists `favorited` on the history row
 - Delete session: remove all task history and events for the session after confirmation
@@ -409,7 +422,7 @@ GET /api/snapshot?search=&limit=50&offset=0&provider=all&sessionId=&favorites=0
 
 Query notes:
 
-- `provider`: `all` | `claude` | `codex` | `grok`
+- `provider`: `all` | `claude` | `codex` | `grok` | `opencode`
 - `favorites=1`: only return favorited history rows
 - `sessionId`: exact session filter via `provider_instance_id`
 
@@ -494,7 +507,7 @@ npm start
 npm run hooks:install
 ```
 
-Then restart a Claude/Codex/Grok session.
+Then restart a Claude/Codex/Grok/OpenCode session.
 
 ### Dashboard Shows Sessions That Already Exited
 
@@ -571,6 +584,7 @@ These are covered by `.gitignore`.
 ## Limitations
 
 - Codex approval handling is display-oriented; answer in the CLI when Codex requires interaction
+- OpenCode is history-only: no live hook events, no approvals, and agent cards rely on process discovery plus its local SQLite, so a session disappears once its process exits
 - Grok approvals gate through `PreToolUse`: panel reject is a hard deny, but panel approve only falls through to grok's own permission rules (the TUI may still prompt); for remote-only approval run grok with `--always-approve` or allow rules and let the panel be the gate. Hook timeouts fail open on grok's side
 - Claude foreground sessions need hooks for precise lifecycle updates
 - Browser notifications require browser permission and support

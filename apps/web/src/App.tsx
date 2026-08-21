@@ -548,7 +548,7 @@ export function App() {
               <span>{autoApproveEnabled ? '自动授令·开' : '自动授令·关'}</span>
             </button>
           </div>
-          <p className="panelNote">Claude 与 Grok 可在此授令，Codex 只暂现片刻，仍需回命令行应答</p>
+          <p className="panelNote">Claude 与 Grok 可在此授令，Codex 惊鸿一瞥，仍需回命令行应答，OpenCode 不问令事，唯录卷宗</p>
           <div className="approvalList">
             {visibleApprovals.length ? visibleApprovals.map((approval) => (
               <ApprovalCard key={approval.id} approval={approval} onResolve={onResolveApproval} />
