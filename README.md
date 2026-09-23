@@ -119,11 +119,13 @@ PID files are written under `.agent-monitor/`, one per port.
 
 ## Configuration
 
-Copy `.env.example` if you want local defaults:
+The backend reads `.env` from the project root on startup. Add only the settings you want to override; omitted backend settings use the defaults below. For example, to keep history permanently:
 
-```bash
-cp .env.example .env
+```dotenv
+AGENT_MONITOR_HISTORY_DAYS=0
 ```
+
+See `.env.example` for all available settings.
 
 Environment variables:
 

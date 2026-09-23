@@ -1,5 +1,8 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { loadEnvFile } from 'node:process';
+
+if (existsSync('.env')) loadEnvFile('.env');
 
 export const serverConfig = {
   host: process.env.AGENT_MONITOR_HOST ?? '127.0.0.1',
